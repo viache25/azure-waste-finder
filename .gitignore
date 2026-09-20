@@ -1,0 +1,33 @@
+# Terraform: state and local vars can contain IDs and keys - never commit
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!example.tfvars
+crash.log
+.terraform.tfstate.lock.info
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Secrets and local config
+.env
+*.pem
+*.key
+
+# Generated output
+reports/
+.cache/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

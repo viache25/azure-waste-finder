@@ -1,0 +1,10 @@
+// VMs that are stopped but NOT deallocated: the compute is still reserved and billed.
+Resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| extend powerState = tostring(properties.extended.instanceView.powerState.code)
+| where powerState =~ 'PowerState/stopped'
+| project id, name, resourceGroup, location,
+          sku = tostring(properties.hardwareProfile.vmSize),
+          osType = tostring(properties.storageProfile.osDisk.osType),
+          powerState,
+          tags

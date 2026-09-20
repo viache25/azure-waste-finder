@@ -1,0 +1,15 @@
+{
+  "_comment": "Fictional demo subscription (Contoso). Used by --demo and the tests.",
+  "unattached_disk": [
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/disks/erp-db-old-data", "name": "erp-db-old-data", "resourceGroup": "rg-legacy-erp", "location": "westeurope", "sku": "Premium_LRS", "sizeGb": 512, "tags": {"owner": "erp-team"}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/disks/awf-orphaned-disk", "name": "awf-orphaned-disk", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "Standard_LRS", "sizeGb": 32, "tags": {"project": "azure-waste-finder"}}
+  ],
+  "stopped_vm": [
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/build-agent-02", "name": "build-agent-02", "resourceGroup": "rg-test", "location": "westeurope", "sku": "Standard_D4s_v5", "osType": "Linux", "powerState": "PowerState/stopped", "tags": {}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/virtualMachines/awf-stopped-vm", "name": "awf-stopped-vm", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "Standard_B1s", "osType": "Linux", "powerState": "PowerState/stopped", "tags": {"project": "azure-waste-finder"}}
+  ],
+  "orphaned_public_ip": [
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/publicIPAddresses/awf-orphaned-pip", "name": "awf-orphaned-pip", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "Standard", "allocation": "Static", "tags": {"project": "azure-waste-finder"}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/publicIPAddresses/pip-old-gateway", "name": "pip-old-gateway", "resourceGroup": "rg-web-old", "location": "westeurope", "sku": "Standard", "allocation": "Static", "tags": {}}
+  ]
+}

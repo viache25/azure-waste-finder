@@ -1,0 +1,8 @@
+// Managed disks that are not attached to any VM. They are billed by provisioned size.
+Resources
+| where type =~ 'microsoft.compute/disks'
+| where tostring(properties.diskState) =~ 'Unattached'
+| project id, name, resourceGroup, location,
+          sku = tostring(sku.name),
+          sizeGb = toint(properties.diskSizeGB),
+          tags

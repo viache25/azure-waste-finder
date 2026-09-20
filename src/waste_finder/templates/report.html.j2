@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Azure Kostencheck</title>
+<style>
+  :root { --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea; --accent:#0a66c2; --bad:#b42318; --bg:#fff; --card:#f6f8fa; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6e8eb; --muted:#9aa4af; --line:#30363d; --accent:#4ea1ff; --bad:#ff7b72; --bg:#0d1117; --card:#161b22; }
+  }
+  body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 32px 16px; }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .meta { color: var(--muted); margin-bottom: 24px; }
+  .demo { background: var(--card); border-left: 4px solid var(--accent); padding: 8px 12px; margin-bottom: 16px; }
+  .total { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin-bottom: 28px; }
+  .total .big { font-size: 34px; font-weight: 700; color: var(--bad); }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  code { font-size: 13px; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Azure Kostencheck: Verschwendungsbericht</h1>
+  <div class="meta">Subscription <code>{{ subscription }}</code> · {{ today }}</div>
+  {% if demo %}<div class="demo"><strong>Demo-Daten:</strong> fiktive Subscription und Beispielpreise, keine echte Umgebung.</div>{% endif %}
+
+  <div class="total">
+    Sie verlieren ca.
+    <div class="big">{{ summary.monthly_eur | eur }} pro Monat</div>
+    ≈ {{ summary.yearly_eur | eur }} pro Jahr durch {{ summary.count }} ungenutzte Ressourcen.
+    {% if summary.unpriced %}<br>{{ summary.unpriced }} Ressource(n) ohne Preis, nicht in der Summe enthalten.{% endif %}
+  </div>
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
+    <tbody>
+    {% for f in findings %}
+      <tr>
+        <td><code>{{ f.name }}</code></td>
+        <td>{{ rules[f.rule].title }}</td>
+        <td>{{ f.resource_group }}</td>
+        <td>{{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %}</td>
+        <td class="num">{{ f.monthly_cost_eur | eur }}</td>
+        <td>{{ rules[f.rule].action }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <footer>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
+</main>
+</body>
+</html>

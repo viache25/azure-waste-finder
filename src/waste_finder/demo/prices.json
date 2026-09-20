@@ -1,0 +1,14 @@
+{
+  "_comment": "Approximate sample prices in the Retail Prices API format, for --demo and tests only. Real runs query the live API.",
+  "Items": [
+    {"serviceName": "Virtual Machines", "priceType": "Consumption", "armSkuName": "Standard_B1s", "armRegionName": "westeurope", "productName": "Virtual Machines BS Series", "skuName": "B1s", "meterName": "B1s", "unitOfMeasure": "1 Hour", "retailPrice": 0.0112},
+    {"serviceName": "Virtual Machines", "priceType": "Consumption", "armSkuName": "Standard_B1s", "armRegionName": "westeurope", "productName": "Virtual Machines BS Series Windows", "skuName": "B1s", "meterName": "B1s", "unitOfMeasure": "1 Hour", "retailPrice": 0.0158},
+    {"serviceName": "Virtual Machines", "priceType": "Consumption", "armSkuName": "Standard_B1s", "armRegionName": "westeurope", "productName": "Virtual Machines BS Series", "skuName": "B1s Spot", "meterName": "B1s Spot", "unitOfMeasure": "1 Hour", "retailPrice": 0.0023},
+    {"serviceName": "Virtual Machines", "priceType": "Consumption", "armSkuName": "Standard_D4s_v5", "armRegionName": "westeurope", "productName": "Virtual Machines Dsv5 Series", "skuName": "D4s v5", "meterName": "D4s v5", "unitOfMeasure": "1 Hour", "retailPrice": 0.203},
+    {"serviceName": "Virtual Machines", "priceType": "Consumption", "armSkuName": "Standard_D4s_v5", "armRegionName": "westeurope", "productName": "Virtual Machines Dsv5 Series", "skuName": "D4s v5 Low Priority", "meterName": "D4s v5 Low Priority", "unitOfMeasure": "1 Hour", "retailPrice": 0.0406},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "S4 LRS", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "meterName": "S4 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 1.41},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "S4 LRS", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "meterName": "LRS Disk Operations", "unitOfMeasure": "10K", "retailPrice": 0.0005},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "P20 LRS", "armRegionName": "westeurope", "productName": "Premium SSD Managed Disks", "meterName": "P20 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 67.58},
+    {"serviceName": "Virtual Network", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "IP Addresses", "skuName": "Standard", "meterName": "Standard IPv4 Static Public IP", "unitOfMeasure": "1 Hour", "retailPrice": 0.0046}
+  ]
+}

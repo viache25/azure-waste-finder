@@ -1,0 +1,34 @@
+# Azure Kostencheck: Verschwendungsbericht
+
+{% if demo %}
+> **Demo-Daten:** fiktive Subscription und Beispielpreise, keine echte Umgebung.
+
+{% endif %}
+**Subscription:** `{{ subscription }}`  
+**Datum:** {{ today }}
+
+## Ergebnis
+
+Sie verlieren ca. **{{ summary.monthly_eur | eur }} pro Monat** (≈ {{ summary.yearly_eur | eur }} pro Jahr) durch **{{ summary.count }}** ungenutzte Ressourcen.
+{% if summary.unpriced %}
+
+{{ summary.unpriced }} Ressource(n) konnten nicht bepreist werden und sind in der Summe nicht enthalten.
+{% endif %}
+
+## Gefundene Ressourcen
+
+| # | Ressource | Problem | Ressourcengruppe | SKU | €/Monat | Empfehlung |
+|---|---|---|---|---|---:|---|
+{% for f in findings %}
+| {{ loop.index }} | `{{ f.name }}` | {{ rules[f.rule].title }} | {{ f.resource_group }} | {{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %} | {{ f.monthly_cost_eur | eur }} | {{ rules[f.rule].action }} |
+{% endfor %}
+
+## Warum kostet das Geld?
+
+{% for key, info in rules.items() %}
+- **{{ info.title }}:** {{ info.why }}
+{% endfor %}
+
+---
+
+*Preise: Azure Retail Prices API (Listenpreise in EUR, {{ 730 }} h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.*

@@ -1,0 +1,9 @@
+// Public IPs not associated with a NIC, load balancer or NAT gateway.
+Resources
+| where type =~ 'microsoft.network/publicipaddresses'
+| where isempty(tostring(properties.ipConfiguration))
+    and isempty(tostring(properties.natGateway))
+| project id, name, resourceGroup, location,
+          sku = tostring(sku.name),
+          allocation = tostring(properties.publicIPAllocationMethod),
+          tags

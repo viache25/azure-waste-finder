@@ -1,4 +1,5 @@
 """Render findings as a client-facing report (German, Markdown + HTML)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -3,12 +3,14 @@
 Docs: https://learn.microsoft.com/rest/api/cost-management/retail-prices/azure-retail-prices
 Retail = list price. Real customer prices can be lower (EA/CSP discounts, reservations).
 """
+
 from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
+from typing import Any
 
 import requests
 
@@ -17,13 +19,28 @@ from waste_finder.models import HOURS_PER_MONTH, Finding
 API_URL = "https://prices.azure.com/api/retail/prices"
 CURRENCY = "EUR"
 
+# One item of the Retail Prices API response.
+PriceItem = dict[str, Any]
+
 # An item fetcher takes an OData filter and returns the matching price items.
-PriceFetcher = Callable[[str], list[dict]]
+PriceFetcher = Callable[[str], list[PriceItem]]
 
 # Managed disk tiers: (max size in GB, tier number). Same numbers for S, E and P disks.
 DISK_TIERS = [
-    (4, 1), (8, 2), (16, 3), (32, 4), (64, 6), (128, 10), (256, 15), (512, 20),
-    (1024, 30), (2048, 40), (4096, 50), (8192, 60), (16384, 70), (32767, 80),
+    (4, 1),
+    (8, 2),
+    (16, 3),
+    (32, 4),
+    (64, 6),
+    (128, 10),
+    (256, 15),
+    (512, 20),
+    (1024, 30),
+    (2048, 40),
+    (4096, 50),
+    (8192, 60),
+    (16384, 70),
+    (32767, 80),
 ]
 DISK_PREFIX = {"Standard": "S", "StandardSSD": "E", "Premium": "P"}
 # Standard HDD disks start at S4 (32 GB).
@@ -82,7 +99,8 @@ def _ip_price(finding: Finding, fetch: PriceFetcher) -> tuple[float | None, str]
     if not meter:
         return None, f"public IP SKU {finding.sku} not supported"
     items = [
-        i for i in fetch(f"serviceName eq 'Virtual Network' and priceType eq 'Consumption' and meterName eq '{meter}'")
+        i
+        for i in fetch(f"serviceName eq 'Virtual Network' and priceType eq 'Consumption' and meterName eq '{meter}'")
         if i.get("unitOfMeasure") == "1 Hour"
     ]
     # Prefer the exact region, fall back to any region (IP prices are the same almost everywhere).
@@ -110,17 +128,18 @@ def price_findings(findings: list[Finding], fetch: PriceFetcher) -> list[Finding
 
 def retail_api_fetcher(cache_file: Path | None = None, ttl_seconds: int = 24 * 3600) -> PriceFetcher:
     """Real fetcher: calls the public API, follows paging, caches answers in a JSON file."""
-    cache: dict = {}
+    cache: dict[str, dict[str, Any]] = {}
     if cache_file and cache_file.exists():
         cache = json.loads(cache_file.read_text(encoding="utf-8"))
 
-    def fetch(odata_filter: str) -> list[dict]:
+    def fetch(odata_filter: str) -> list[PriceItem]:
         hit = cache.get(odata_filter)
         if hit and time.time() - hit["ts"] < ttl_seconds:
-            return hit["items"]
-        items: list[dict] = []
+            cached: list[PriceItem] = hit["items"]
+            return cached
+        items: list[PriceItem] = []
         url: str | None = API_URL
-        params: dict | None = {"currencyCode": f"'{CURRENCY}'", "$filter": odata_filter}
+        params: dict[str, str] | None = {"currencyCode": f"'{CURRENCY}'", "$filter": odata_filter}
         while url:
             resp = requests.get(url, params=params, timeout=30)
             resp.raise_for_status()

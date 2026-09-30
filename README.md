@@ -1,5 +1,9 @@
 # Azure Waste Finder
 
+[![CI](https://github.com/viache25/azure-waste-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/viache25/azure-waste-finder/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A small **FinOps "Kostencheck"** for Azure: find resources that cost money but do nothing, and put a euro amount on them.
 
 - **Terraform** deploys a deliberately wasteful demo environment.
@@ -38,7 +42,7 @@ src/waste_finder/
   report.py, templates/   German client report (Markdown + HTML)
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest, runs fully offline
+tests/                    pytest (33 tests), runs fully offline, coverage floor 95 %
 ```
 
 Design choices:
@@ -94,6 +98,26 @@ If `terraform apply` says the VM size is not available, set `location` or `vm_si
 - `*.tfstate` and `*.tfvars` are git-ignored: state contains resource IDs and the generated SSH key.
 - The demo VM has no public IP and password login is disabled.
 - The tool is **read-only**: it never changes or deletes anything in the subscription.
+
+## Development
+
+```bash
+pip install -e ".[dev]"          # pytest, pytest-cov, ruff, mypy
+pytest --cov                     # tests + coverage; fails below the floor in pyproject.toml (95 %)
+ruff check . && ruff format --check .
+mypy                             # strict on src/
+pip install pre-commit && pre-commit install   # ruff + terraform fmt before each commit
+```
+
+CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
+
+| Job | What it checks |
+|---|---|
+| `lint` | `ruff check`, `ruff format --check`, `mypy` (strict) |
+| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report as artifact `demo-report` |
+| `terraform` | `terraform fmt -check`, `init -backend=false`, `validate` |
+
+Dependabot opens weekly grouped PRs for pip, GitHub Actions and Terraform providers.
 
 ## Roadmap
 

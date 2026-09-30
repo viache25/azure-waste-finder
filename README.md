@@ -95,13 +95,9 @@ If `terraform apply` says the VM size is not available, set `location` or `vm_si
 - The demo VM has no public IP and password login is disabled.
 - The tool is **read-only**: it never changes or deletes anything in the subscription.
 
-## Next steps
+## Roadmap
 
-- Port to C#/.NET (Azure.ResourceManager.ResourceGraph)
-- More rules: old snapshots, idle Premium disks, empty App Service Plans, unused load balancers
-- Use the Cost Management API for actual (discounted) costs instead of list prices
-- Azure DevOps pipeline that runs the check on a schedule and publishes the report
-- Azure Workbook dashboard
+The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (old snapshots, empty App Service plans, idle network resources, downgrade candidates), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
 
 ## License
 

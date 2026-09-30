@@ -6,19 +6,21 @@ from waste_finder.pricing import disk_sku_name, price_findings
 
 
 def make(rule, sku, **kw):
-    return Finding(rule=rule, resource_id="id", name="n", resource_group="rg",
-                   location="westeurope", sku=sku, **kw)
+    return Finding(rule=rule, resource_id="id", name="n", resource_group="rg", location="westeurope", sku=sku, **kw)
 
 
-@pytest.mark.parametrize("sku,size,expected", [
-    ("Standard_LRS", 32, "S4 LRS"),
-    ("Standard_LRS", 10, "S4 LRS"),      # HDD starts at S4
-    ("StandardSSD_LRS", 10, "E3 LRS"),
-    ("Premium_LRS", 512, "P20 LRS"),
-    ("Premium_ZRS", 100, "P10 ZRS"),
-    ("UltraSSD_LRS", 100, None),
-    ("Premium_LRS", 99999, None),
-])
+@pytest.mark.parametrize(
+    "sku,size,expected",
+    [
+        ("Standard_LRS", 32, "S4 LRS"),
+        ("Standard_LRS", 10, "S4 LRS"),  # HDD starts at S4
+        ("StandardSSD_LRS", 10, "E3 LRS"),
+        ("Premium_LRS", 512, "P20 LRS"),
+        ("Premium_ZRS", 100, "P10 ZRS"),
+        ("UltraSSD_LRS", 100, None),
+        ("Premium_LRS", 99999, None),
+    ],
+)
 def test_disk_sku_name(sku, size, expected):
     assert disk_sku_name(sku, size) == expected
 
@@ -47,3 +49,29 @@ def test_missing_price_is_none_not_zero():
     [f] = price_findings([make("stopped_vm", "Standard_Unknown")], demo_fetcher())
     assert f.monthly_cost_eur is None
     assert "no VM price" in f.price_note
+
+
+def test_unsupported_disk_type_has_no_price():
+    [f] = price_findings([make("unattached_disk", "UltraSSD_LRS", size_gb=100)], demo_fetcher())
+    assert f.monthly_cost_eur is None
+    assert "not supported" in f.price_note
+
+
+def test_disk_tier_without_price_has_no_price():
+    [f] = price_findings([make("unattached_disk", "Premium_LRS", size_gb=1000)], demo_fetcher())
+    assert f.monthly_cost_eur is None
+    assert "no price for P30 LRS" in f.price_note
+
+
+def test_public_ip_falls_back_to_other_region():
+    f = make("orphaned_public_ip", "Standard")
+    f.location = "northeurope"
+    [f] = price_findings([f], demo_fetcher())
+    assert f.monthly_cost_eur == round(0.0046 * 730, 2)
+
+
+@pytest.mark.parametrize("sku,note", [("Global", "not supported"), ("Basic", "no public IP price")])
+def test_public_ip_without_price(sku, note):
+    [f] = price_findings([make("orphaned_public_ip", sku)], demo_fetcher())
+    assert f.monthly_cost_eur is None
+    assert note in f.price_note

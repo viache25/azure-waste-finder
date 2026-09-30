@@ -17,6 +17,6 @@ class Finding:
     sku: str
     size_gb: int | None = None
     os_type: str | None = None
-    tags: dict = field(default_factory=dict)
+    tags: dict[str, str] = field(default_factory=dict)
     monthly_cost_eur: float | None = None  # None = price not found
     price_note: str = ""

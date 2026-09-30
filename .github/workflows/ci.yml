@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  python:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -17,10 +17,50 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: pytest -q
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+
+  python:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write # dorny/test-reporter publishes the JUnit results as a check run
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      # The coverage floor (fail_under) lives in pyproject.toml.
+      - run: pytest -q --cov --cov-report=term --cov-report=xml --cov-report=html --junitxml=junit.xml
+      - name: Publish test results
+        uses: dorny/test-reporter@v3
+        # Dependabot and fork PRs get a read-only token and cannot create check runs.
+        if: >-
+          !cancelled() && github.actor != 'dependabot[bot]' &&
+          (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        with:
+          name: pytest (Python ${{ matrix.python-version }})
+          path: junit.xml
+          reporter: java-junit
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            htmlcov/
+            junit.xml
       - name: Demo report
+        if: matrix.python-version == '3.12'
         run: python -m waste_finder --demo --out-dir reports
       - uses: actions/upload-artifact@v7
+        if: matrix.python-version == '3.12'
         with:
           name: demo-report
           path: reports/

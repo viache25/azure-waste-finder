@@ -1,4 +1,5 @@
 """Command line entry point: python -m waste_finder --subscription <id>"""
+
 from __future__ import annotations
 
 import argparse
@@ -13,8 +14,11 @@ from waste_finder.rules import find_waste, resource_graph_runner
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="waste-finder", description="Find wasted spend in an Azure subscription.")
-    p.add_argument("--subscription", default=os.environ.get("AZURE_SUBSCRIPTION_ID"),
-                   help="Subscription ID (default: $AZURE_SUBSCRIPTION_ID)")
+    p.add_argument(
+        "--subscription",
+        default=os.environ.get("AZURE_SUBSCRIPTION_ID"),
+        help="Subscription ID (default: $AZURE_SUBSCRIPTION_ID)",
+    )
     p.add_argument("--out-dir", type=Path, default=Path("reports"), help="Where to write report.md / report.html")
     p.add_argument("--demo", action="store_true", help="Use built-in fake data, no Azure access needed")
     return p.parse_args(argv)

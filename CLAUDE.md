@@ -1,0 +1,59 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+A small FinOps "Kostencheck" for Azure (portfolio project, cloud/DevOps roles in Vienna / DACH). Terraform in `infra/` deploys a deliberately wasteful environment; a Python CLI finds the waste with Azure Resource Graph, prices it with the public Azure Retail Prices API and writes a German client report ("Sie verlieren ca. X € pro Monat"). `terraform destroy` removes everything.
+
+The step-by-step extension plan and its design decisions (D1, D2, …) live in GitHub Issue #1; its comments are the progress log. Work happens in branches with one PR per change, merged only after CI is green; never push to `main` directly. Check `git log` and the code before assuming a planned feature exists.
+
+## Commands
+
+```bash
+pip install -e ".[dev]"                 # install with test deps (use a venv)
+pytest                                  # all tests, fully offline
+pytest tests/test_pricing.py::test_name # single test
+python -m waste_finder --demo           # offline demo run -> reports/report.md + report.html
+python -m waste_finder --subscription <id>   # real run, needs `az login` (Reader is enough)
+
+cd infra
+terraform fmt -check -recursive
+terraform init -backend=false && terraform validate
+```
+
+Windows: activate the venv with `.venv\Scripts\activate`; `scripts/stop-vm.ps1` instead of `stop-vm.sh`.
+
+## Architecture
+
+```
+infra/                    Terraform: RG, 5 € budget alert, 3 waste resources (disk, VM, public IP)
+scripts/stop-vm.(ps1|sh)  `az vm stop` WITHOUT deallocate (Terraform can't leave a VM "stopped")
+src/waste_finder/
+  models.py               Finding dataclass, HOURS_PER_MONTH = 730
+  queries/*.kql           one Resource Graph query per rule
+  rules.py                RULES (rule id -> KQL file), find_waste(run_query) -> list[Finding]
+  pricing.py              PRICERS (rule id -> pricing fn), Retail Prices API fetcher with 24 h JSON cache
+  report.py, templates/   Jinja2 Markdown + HTML report, German
+  cli.py                  argparse entry point (`python -m waste_finder`, console script `waste-finder`)
+  demo.py, demo/*.json    fake subscription + price list for --demo and tests
+tests/                    pytest, no network
+```
+
+Flow: Resource Graph → `Finding`s → pricing → report. The query runner (`Callable[[str], list[dict]]`) and the price fetcher (`Callable[[str], list[dict]]`, takes an OData filter) are injected, which is how tests and `--demo` run without Azure. `demo_runner` maps a KQL text back to its rule, so every rule needs an entry in `demo/resource_graph.json`; `demo_fetcher` evaluates only simple `field eq 'value' and ...` filters, so pricing filters must stay in that shape (or the demo fetcher must learn the new shape).
+
+Adding a rule today touches: a new `queries/*.kql`, `RULES` in `rules.py`, `PRICERS` in `pricing.py`, rows in `demo/resource_graph.json` and `demo/prices.json`, the report templates' rule labels, tests, and the README table.
+
+## Conventions and gotchas
+
+- **Read-only tool.** Never add code that modifies or deletes Azure resources. Auth is `DefaultAzureCredential` only; no keys or secrets in code, tests or workflows.
+- **No Azure in automated runs.** CI and scheduled builder runs have no Azure credentials. New features must be testable offline with fixtures; live-Azure workflows must skip cleanly when repo variables are not set.
+- **Cost discipline.** New Terraform waste resources are opt-in, smallest SKU, README states their approximate €/hour. Nothing that creates Azure resources runs on a schedule.
+- **Prices** are list prices (Retail API, `currencyCode='EUR'`), monthly = hourly × 730. Disks are priced by the smallest tier that fits (32 GB Standard HDD → `S4 LRS`, Standard HDD starts at S4).
+- **"Stopped" ≠ "deallocated"**: the VM rule matches `PowerState/stopped` only; deallocated VMs don't bill compute.
+- **Language**: report text German; code, CLI help, README, docs, commits in English.
+- `*.tfvars` (except `example.tfvars`) and `*.tfstate` are git-ignored: state holds the generated SSH key.
+
+## CI
+
+`.github/workflows/ci.yml` runs on PRs and pushes to `main`: job `python` (pytest on 3.12, demo report uploaded as artifact `demo-report`) and job `terraform` (`fmt -check`, `init -backend=false`, `validate`). Dependabot (`.github/dependabot.yml`) opens weekly grouped PRs for pip, GitHub Actions and Terraform providers; they are merged when CI is green.

@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Python dependencies from pyproject.toml
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # One PR for all minor/patch bumps instead of one per library
+      pip-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Action versions in .github/workflows/
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # azurerm / tls provider constraints in infra/
+  - package-ecosystem: terraform
+    directory: /infra
+    schedule:
+      interval: weekly

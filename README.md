@@ -1,6 +1,7 @@
 # Azure Waste Finder
 
 [![CI](https://github.com/viache25/azure-waste-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/viache25/azure-waste-finder/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/viache25/azure-waste-finder/actions/workflows/codeql.yml/badge.svg)](https://github.com/viache25/azure-waste-finder/actions/workflows/codeql.yml)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -99,7 +100,9 @@ If `terraform apply` says the VM size is not available, set `location` or `vm_si
 - `*.tfstate` and `*.tfvars` are git-ignored: state contains resource IDs and the generated SSH key.
 - The demo VM has no public IP and password login is disabled; the orphaned disk denies public network access. `terraform test` checks all of this in CI.
 - Checkov scans `infra/` on every PR. Findings that are intentional for a waste environment (no customer-managed key on an empty disk, no NSG on a subnet without public endpoints) are skipped inline with a reason.
+- CodeQL analyses the Python code on every PR, on `main` and weekly; `pip-audit` fails CI when a runtime or dev dependency has a known vulnerability.
 - The tool is **read-only**: it never changes or deletes anything in the subscription.
+- How to report a vulnerability: see [SECURITY.md](SECURITY.md).
 
 ## Development
 
@@ -111,6 +114,7 @@ mypy                             # strict on src/
 cd infra && terraform init -backend=false && terraform test   # mocked providers, no Azure login
 tflint --init && tflint          # in infra/, config in infra/.tflint.hcl
 pip install pre-commit && pre-commit install   # ruff + terraform fmt before each commit
+pip install pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit -r /tmp/req.txt --no-deps --disable-pip
 ```
 
 CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
@@ -118,11 +122,14 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 | Job | What it checks |
 |---|---|
 | `lint` | `ruff check`, `ruff format --check`, `mypy` (strict) |
+| `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
 | `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report as artifact `demo-report` |
 | `terraform` | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked azurerm/tls providers: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
-Dependabot opens weekly grouped PRs for pip, GitHub Actions and Terraform providers.
+`.github/workflows/codeql.yml` runs CodeQL for Python on PRs, on `main` and weekly; alerts appear under Security → Code scanning.
+
+Dependabot opens weekly PRs for pip, GitHub Actions and Terraform providers: minor and patch bumps grouped into one PR per ecosystem, major bumps as separate PRs. They are merged when CI is green.
 
 ## Roadmap
 

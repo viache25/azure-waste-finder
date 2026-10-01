@@ -21,6 +21,20 @@ jobs:
       - run: ruff format --check .
       - run: mypy
 
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # Audit exactly what the project installs (runtime + dev deps), not the runner's own pip/setuptools.
+      # Fails the job on any known vulnerability (PyPI advisory database / OSV).
+      - run: pip freeze --exclude-editable > audit-requirements.txt
+      - run: pip install pip-audit==2.10.1
+      - run: pip-audit -r audit-requirements.txt --no-deps --disable-pip --progress-spinner off
+
   python:
     runs-on: ubuntu-latest
     permissions:

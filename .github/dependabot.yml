@@ -1,4 +1,7 @@
 version: 2
+# Minor and patch bumps are grouped into one PR per ecosystem; major bumps come as
+# separate PRs so a breaking one can be fixed or closed without holding up the rest.
+# Merge policy (see CLAUDE.md): merged when CI is green.
 updates:
   # Python dependencies from pyproject.toml
   - package-ecosystem: pip
@@ -6,7 +9,6 @@ updates:
     schedule:
       interval: weekly
     groups:
-      # One PR for all minor/patch bumps instead of one per library
       pip-minor-and-patch:
         update-types: [minor, patch]
 
@@ -16,11 +18,14 @@ updates:
     schedule:
       interval: weekly
     groups:
-      github-actions:
-        patterns: ["*"]
+      github-actions-minor-and-patch:
+        update-types: [minor, patch]
 
   # azurerm / tls provider constraints in infra/
   - package-ecosystem: terraform
     directory: /infra
     schedule:
       interval: weekly
+    groups:
+      terraform-minor-and-patch:
+        update-types: [minor, patch]

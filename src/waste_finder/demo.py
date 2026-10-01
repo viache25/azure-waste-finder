@@ -8,7 +8,8 @@ from importlib import resources
 from typing import Any
 
 from waste_finder.pricing import PriceFetcher, PriceItem
-from waste_finder.rules import RULES, QueryRunner, Row, load_query
+from waste_finder.registry import REGISTRY
+from waste_finder.rules import QueryRunner, Row, load_query
 
 
 def _load(name: str) -> Any:
@@ -17,7 +18,7 @@ def _load(name: str) -> Any:
 
 def demo_runner() -> QueryRunner:
     data = _load("resource_graph.json")
-    query_to_rule = {load_query(rule): rule for rule in RULES}
+    query_to_rule = {load_query(rule): rule for rule in REGISTRY}
 
     def run(query: str) -> list[Row]:
         rows: list[Row] = data[query_to_rule[query]]

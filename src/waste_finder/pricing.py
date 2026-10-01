@@ -15,6 +15,7 @@ from typing import Any
 import requests
 
 from waste_finder.models import HOURS_PER_MONTH, Finding
+from waste_finder.registry import REGISTRY
 
 API_URL = "https://prices.azure.com/api/retail/prices"
 CURRENCY = "EUR"
@@ -24,6 +25,9 @@ PriceItem = dict[str, Any]
 
 # An item fetcher takes an OData filter and returns the matching price items.
 PriceFetcher = Callable[[str], list[PriceItem]]
+
+# A pricing strategy returns (monthly cost in EUR or None, note on how it was priced).
+PricingStrategy = Callable[[Finding, PriceFetcher], tuple[float | None, str]]
 
 # Managed disk tiers: (max size in GB, tier number). Same numbers for S, E and P disks.
 DISK_TIERS = [
@@ -111,16 +115,17 @@ def _ip_price(finding: Finding, fetch: PriceFetcher) -> tuple[float | None, str]
     return price * HOURS_PER_MONTH, f"{price} €/h × {HOURS_PER_MONTH} h"
 
 
-PRICERS = {
-    "stopped_vm": _vm_price,
-    "unattached_disk": _disk_price,
-    "orphaned_public_ip": _ip_price,
+# strategy name (registry.Rule.pricing) -> function
+STRATEGIES: dict[str, PricingStrategy] = {
+    "vm_compute": _vm_price,
+    "managed_disk": _disk_price,
+    "public_ip": _ip_price,
 }
 
 
 def price_findings(findings: list[Finding], fetch: PriceFetcher) -> list[Finding]:
     for f in findings:
-        cost, note = PRICERS[f.rule](f, fetch)
+        cost, note = STRATEGIES[REGISTRY[f.rule].pricing](f, fetch)
         f.monthly_cost_eur = round(cost, 2) if cost is not None else None
         f.price_note = note
     return findings

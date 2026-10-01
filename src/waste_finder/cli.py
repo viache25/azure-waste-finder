@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from waste_finder.pricing import price_findings, retail_api_fetcher
+from waste_finder.registry import REGISTRY
 from waste_finder.report import eur, render, summarize
 from waste_finder.rules import find_waste, resource_graph_runner
 
@@ -49,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
 
     s = summarize(findings)
     print(f"{s.count} findings, ~{eur(s.monthly_eur)} per month (~{eur(s.yearly_eur)} per year)")
-    for f in sorted(findings, key=lambda f: f.monthly_cost_eur or 0, reverse=True):
-        print(f"  {eur(f.monthly_cost_eur):>12}  {f.rule:<20} {f.name}")
+    for f in sorted(findings, key=lambda f: f.savings_eur or 0, reverse=True):
+        print(f"  {eur(f.savings_eur):>12}  {f.severity:<6}  {REGISTRY[f.rule].title_en:<32} {f.name}")
     print(f"Report: {args.out_dir / 'report.md'} and {args.out_dir / 'report.html'}")
     return 0

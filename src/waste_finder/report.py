@@ -8,41 +8,24 @@ from datetime import date
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from waste_finder.models import Finding
-
-RULE_INFO = {
-    "unattached_disk": {
-        "title": "Nicht angehängte Managed Disk",
-        "why": "Disks werden nach bereitgestellter Größe abgerechnet, auch wenn keine VM sie nutzt.",
-        "action": "Bei Bedarf Snapshot erstellen, dann Disk löschen.",
-    },
-    "stopped_vm": {
-        "title": "VM gestoppt, aber nicht dealloziert",
-        "why": "Im Zustand 'Stopped' bleibt die Hardware reserviert und die Rechenleistung wird weiter verrechnet.",
-        "action": "VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.",
-    },
-    "orphaned_public_ip": {
-        "title": "Ungenutzte öffentliche IP-Adresse",
-        "why": "Standard-IPs werden pro Stunde verrechnet, auch ohne Zuordnung.",
-        "action": "Löschen, sofern die Adresse nicht bewusst reserviert bleiben muss.",
-    },
-}
+from waste_finder.registry import REGISTRY, SEVERITIES
 
 
 @dataclass
 class Summary:
     count: int
-    monthly_eur: float
+    monthly_eur: float  # sum of savings (D6), not of current cost
     yearly_eur: float
     unpriced: int
 
 
 def summarize(findings: list[Finding]) -> Summary:
-    monthly = sum(f.monthly_cost_eur or 0 for f in findings)
+    monthly = sum(f.savings_eur or 0 for f in findings)
     return Summary(
         count=len(findings),
         monthly_eur=round(monthly, 2),
         yearly_eur=round(monthly * 12, 2),
-        unpriced=sum(1 for f in findings if f.monthly_cost_eur is None),
+        unpriced=sum(1 for f in findings if f.savings_eur is None),
     )
 
 
@@ -61,11 +44,12 @@ def render(findings: list[Finding], subscription: str, fmt: str, demo: bool = Fa
         lstrip_blocks=True,
     )
     env.filters["eur"] = eur
-    ordered = sorted(findings, key=lambda f: f.monthly_cost_eur or 0, reverse=True)
+    ordered = sorted(findings, key=lambda f: f.savings_eur or 0, reverse=True)
     return env.get_template(f"report.{fmt}.j2").render(
         findings=ordered,
         summary=summarize(findings),
-        rules=RULE_INFO,
+        rules=REGISTRY,
+        severities=SEVERITIES,
         subscription=subscription,
         today=date.today().isoformat(),
         demo=demo,

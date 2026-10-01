@@ -1,9 +1,10 @@
 from waste_finder.demo import demo_runner
-from waste_finder.rules import RULES, find_waste, load_query
+from waste_finder.registry import REGISTRY
+from waste_finder.rules import find_waste, load_query
 
 
 def test_every_rule_has_a_query():
-    for rule in RULES:
+    for rule in REGISTRY:
         assert "Resources" in load_query(rule)
 
 
@@ -15,7 +16,7 @@ def test_stopped_vm_query_ignores_deallocated():
 
 def test_find_waste_maps_rows_to_findings():
     findings = find_waste(demo_runner())
-    by_rule = {r: [f for f in findings if f.rule == r] for r in RULES}
+    by_rule = {r: [f for f in findings if f.rule == r] for r in REGISTRY}
     assert all(len(v) == 2 for v in by_rule.values())
 
     disk = next(f for f in by_rule["unattached_disk"] if f.name == "awf-orphaned-disk")
@@ -26,3 +27,8 @@ def test_find_waste_maps_rows_to_findings():
 
 def test_find_waste_with_empty_subscription():
     assert find_waste(lambda query: []) == []
+
+
+def test_findings_carry_the_rule_severity():
+    for f in find_waste(demo_runner()):
+        assert f.severity == REGISTRY[f.rule].severity

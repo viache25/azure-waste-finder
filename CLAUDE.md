@@ -40,10 +40,12 @@ infra/                    Terraform: RG, 5 € budget alert, 3 waste resources (
   .tflint.hcl             tflint: recommended terraform preset + azurerm ruleset
 scripts/stop-vm.(ps1|sh)  `az vm stop` WITHOUT deallocate (Terraform can't leave a VM "stopped")
 src/waste_finder/
-  models.py               Finding dataclass, HOURS_PER_MONTH = 730
+  registry.py             REGISTRY (rule id -> Rule: titles DE/EN, severity, KQL file, pricing strategy name,
+                          why/action text, az command template, docs link); the single source of truth for rules
+  models.py               Finding dataclass (severity, monthly_cost_eur, monthly_savings_eur), HOURS_PER_MONTH = 730
   queries/*.kql           one Resource Graph query per rule
-  rules.py                RULES (rule id -> KQL file), find_waste(run_query) -> list[Finding]
-  pricing.py              PRICERS (rule id -> pricing fn), Retail Prices API fetcher with 24 h JSON cache
+  rules.py                load_query(rule) via the registry, find_waste(run_query) -> list[Finding]
+  pricing.py              STRATEGIES (strategy name -> pricing fn), Retail Prices API fetcher with 24 h JSON cache
   report.py, templates/   Jinja2 Markdown + HTML report, German
   cli.py                  argparse entry point (`python -m waste_finder`, console script `waste-finder`)
   demo.py, demo/*.json    fake subscription + price list for --demo and tests
@@ -52,7 +54,18 @@ tests/                    pytest, no network (test_fetchers.py fakes requests an
 
 Flow: Resource Graph → `Finding`s → pricing → report. The query runner (`Callable[[str], list[dict]]`) and the price fetcher (`Callable[[str], list[dict]]`, takes an OData filter) are injected, which is how tests and `--demo` run without Azure. `demo_runner` maps a KQL text back to its rule, so every rule needs an entry in `demo/resource_graph.json`; `demo_fetcher` evaluates only simple `field eq 'value' and ...` filters, so pricing filters must stay in that shape (or the demo fetcher must learn the new shape).
 
-Adding a rule today touches: a new `queries/*.kql`, `RULES` in `rules.py`, `PRICERS` in `pricing.py`, rows in `demo/resource_graph.json` and `demo/prices.json`, the report templates' rule labels, tests, and the README table.
+Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now, `monthly_savings_eur` is set only when acting saves less than the full cost (e.g. a downgrade). `Finding.savings_eur` falls back to the cost; the report total, the sort order and the CLI output use `savings_eur`.
+
+### How to add a rule
+
+1. `src/waste_finder/queries/<name>.kql`: project at least `id, name, resourceGroup, location, sku, tags` (plus `sizeGb` / `osType` if pricing needs them).
+2. `Rule(...)` entry in `REGISTRY` in `registry.py`: id, `title_de`, `title_en`, `severity` (`high|medium|low|info`), `query_file`, `pricing`, `why_de`, `action_de`, `command` (`az ... --ids {id}`), `docs_url` (learn.microsoft.com).
+3. Pricing: reuse a strategy name from `STRATEGIES` in `pricing.py` or add a new function there (filters in `field eq 'value' and ...` shape so `demo_fetcher` can evaluate them).
+4. Demo data: rows under the rule id in `demo/resource_graph.json`, matching price items in `demo/prices.json`.
+5. Tests: pricing cases in `tests/test_pricing.py`; `tests/test_registry.py` already fails if the KQL file, the strategy or the demo rows are missing.
+6. README rules table; regenerate `docs/sample-report.md` / `.html` from `python -m waste_finder --demo`.
+
+The report templates and the CLI read titles, severity, docs link and command from the registry; they need no change.
 
 ## Conventions and gotchas
 
@@ -61,7 +74,7 @@ Adding a rule today touches: a new `queries/*.kql`, `RULES` in `rules.py`, `PRIC
 - **Cost discipline.** New Terraform waste resources are opt-in, smallest SKU, README states their approximate €/hour. Nothing that creates Azure resources runs on a schedule.
 - **Prices** are list prices (Retail API, `currencyCode='EUR'`), monthly = hourly × 730. Disks are priced by the smallest tier that fits (32 GB Standard HDD → `S4 LRS`, Standard HDD starts at S4).
 - **"Stopped" ≠ "deallocated"**: the VM rule matches `PowerState/stopped` only; deallocated VMs don't bill compute.
-- **Lint/types**: code passes `ruff` and `mypy --strict` (config in `pyproject.toml`) without blanket ignores; Resource Graph rows are `rules.Row`, price items `pricing.PriceItem` (both `dict[str, Any]`).
+- **Lint/types**: code passes `ruff` and `mypy --strict` (config in `pyproject.toml`) without blanket ignores; Resource Graph rows are `rules.Row`, price items `pricing.PriceItem`, pricing functions `pricing.PricingStrategy` (both `dict[str, Any]`).
 - **Language**: report text German; code, CLI help, README, docs, commits in English.
 - `*.tfvars` (except `example.tfvars`) and `*.tfstate` are git-ignored: state holds the generated SSH key.
 

@@ -22,6 +22,12 @@
   th { font-size: 13px; color: var(--muted); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   code { font-size: 13px; }
+  code.cmd { display: inline-block; margin-top: 4px; color: var(--muted); word-break: break-all; }
+  h2 { font-size: 18px; margin: 28px 0 8px; }
+  a { color: var(--accent); }
+  .sev { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; border: 1px solid var(--line); }
+  .sev-high { color: var(--bad); border-color: var(--bad); }
+  .sev-medium { color: var(--accent); border-color: var(--accent); }
   footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
 </style>
 </head>
@@ -40,23 +46,31 @@
 
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
     <tbody>
     {% for f in findings %}
       <tr>
         <td><code>{{ f.name }}</code></td>
-        <td>{{ rules[f.rule].title }}</td>
+        <td>{{ rules[f.rule].title_de }}</td>
+        <td><span class="sev sev-{{ f.severity }}">{{ severities[f.severity] }}</span></td>
         <td>{{ f.resource_group }}</td>
         <td>{{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %}</td>
         <td class="num">{{ f.monthly_cost_eur | eur }}</td>
-        <td>{{ rules[f.rule].action }}</td>
+        <td>{{ rules[f.rule].action_de }}<br><code class="cmd">{{ rules[f.rule].remediation_command(f.resource_id) }}</code></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
 
-  <footer>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
+  <h2>Warum kostet das Geld?</h2>
+  <ul>
+  {% for rule in rules.values() %}
+    <li><strong>{{ rule.title_de }}:</strong> {{ rule.why_de }} (<a href="{{ rule.docs_url }}">Doku</a>)</li>
+  {% endfor %}
+  </ul>
+
+  <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
 </main>
 </body>
 </html>

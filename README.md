@@ -17,17 +17,21 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 
 ## What it detects
 
-| Rule | Why it wastes money | Recommended action |
-|---|---|---|
-| Unattached managed disk | Disks are billed by provisioned size, attached or not | Snapshot if needed, then delete |
-| VM **stopped but not deallocated** | "Stopped" keeps the hardware reserved, so compute is still billed. Only "deallocated" stops the compute meter | `az vm deallocate` or delete |
-| Orphaned public IP | Standard public IPs are billed per hour even without an association | Delete unless intentionally reserved |
+| Rule | Severity | Why it wastes money | Recommended action |
+|---|---|---|---|
+| Unattached managed disk | medium | Disks are billed by provisioned size, attached or not | Snapshot if needed, then `az disk delete` |
+| VM **stopped but not deallocated** | high | "Stopped" keeps the hardware reserved, so compute is still billed. Only "deallocated" stops the compute meter | `az vm deallocate` or delete |
+| Orphaned public IP | low | Standard public IPs are billed per hour even without an association | `az network public-ip delete` unless intentionally reserved |
+
+Rules are data: each one is a single entry in `registry.py` (German and English title, severity, KQL file, pricing strategy, remediation text and `az` command, docs link) plus a KQL file. The report shows the severity, a docs link per rule and the exact `az` command per finding; the tool itself never runs them.
 
 ## How it works
 
 ```mermaid
 flowchart LR
     TF[Terraform<br/>infra/] -->|creates| AZ[(Azure subscription)]
+    REG[registry.py<br/>rules as data] -.-> RG
+    REG -.-> PR
     AZ -->|KQL queries| RG[rules.py<br/>Resource Graph]
     RG -->|Findings| PR[pricing.py<br/>Retail Prices API]
     PR -->|€ per month| RP[report.py<br/>Markdown + HTML]
@@ -38,13 +42,14 @@ infra/                    Terraform: resource group, 5 € budget alert, 3 waste
   tests/*.tftest.hcl      terraform test with mocked providers (no Azure login)
 scripts/stop-vm.(ps1|sh)  stops the demo VM WITHOUT deallocating it
 src/waste_finder/
+  registry.py             one entry per rule: titles, severity, KQL file, pricing strategy, remediation
   queries/*.kql           one Resource Graph query per rule
   rules.py                runs the queries -> list[Finding]
-  pricing.py              Retail Prices API -> €/month per finding (cached 24 h)
+  pricing.py              pricing strategies: Retail Prices API -> €/month per finding (cached 24 h)
   report.py, templates/   German client report (Markdown + HTML)
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (33 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (52 tests), runs fully offline, coverage floor 95 %
 ```
 
 Design choices:
@@ -52,6 +57,7 @@ Design choices:
 - **Resource Graph instead of listing resources per service**: one query language across all resource types and subscriptions, fast even for large tenants.
 - **Retail Prices API**: public, no login, returns EUR. These are list prices; real prices can be lower with EA/CSP discounts, reservations or Azure Hybrid Benefit. The report says so.
 - **Pluggable runners**: the rules and the pricing take a query/fetch function, so tests and `--demo` run without Azure.
+- **Cost vs. savings**: a finding carries what the resource costs now and, optionally, what acting on it saves (e.g. a downgrade). The report total is the sum of savings, which default to the full cost.
 - **Monthly estimate** uses 730 hours, the same convention the Azure pricing calculator uses.
 
 ## Quick start (demo, no Azure needed)

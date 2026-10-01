@@ -22,13 +22,19 @@
   th { font-size: 13px; color: var(--muted); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   code { font-size: 13px; }
+  code.cmd { display: inline-block; margin-top: 4px; color: var(--muted); word-break: break-all; }
+  h2 { font-size: 18px; margin: 28px 0 8px; }
+  a { color: var(--accent); }
+  .sev { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; border: 1px solid var(--line); }
+  .sev-high { color: var(--bad); border-color: var(--bad); }
+  .sev-medium { color: var(--accent); border-color: var(--accent); }
   footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Azure Kostencheck: Verschwendungsbericht</h1>
-  <div class="meta">Subscription <code>demo (Contoso)</code> · 2026-09-20</div>
+  <div class="meta">Subscription <code>demo (Contoso)</code> · 2026-10-01</div>
 <div class="demo"><strong>Demo-Daten:</strong> fiktive Subscription und Beispielpreise, keine echte Umgebung.</div>
   <div class="total">
     Sie verlieren ca.
@@ -38,61 +44,74 @@
 
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
     <tbody>
       <tr>
         <td><code>build-agent-02</code></td>
         <td>VM gestoppt, aber nicht dealloziert</td>
+        <td><span class="sev sev-high">hoch</span></td>
         <td>rg-test</td>
         <td>Standard_D4s_v5</td>
         <td class="num">148,19 €</td>
-        <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.</td>
+        <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.<br><code class="cmd">az vm deallocate --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/build-agent-02</code></td>
       </tr>
       <tr>
         <td><code>erp-db-old-data</code></td>
         <td>Nicht angehängte Managed Disk</td>
+        <td><span class="sev sev-medium">mittel</span></td>
         <td>rg-legacy-erp</td>
         <td>Premium_LRS (512 GB)</td>
         <td class="num">67,58 €</td>
-        <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.</td>
+        <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/disks/erp-db-old-data</code></td>
       </tr>
       <tr>
         <td><code>awf-stopped-vm</code></td>
         <td>VM gestoppt, aber nicht dealloziert</td>
+        <td><span class="sev sev-high">hoch</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard_B1s</td>
         <td class="num">8,18 €</td>
-        <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.</td>
+        <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.<br><code class="cmd">az vm deallocate --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/virtualMachines/awf-stopped-vm</code></td>
       </tr>
       <tr>
         <td><code>awf-orphaned-pip</code></td>
         <td>Ungenutzte öffentliche IP-Adresse</td>
+        <td><span class="sev sev-low">niedrig</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard</td>
         <td class="num">3,36 €</td>
-        <td>Löschen, sofern die Adresse nicht bewusst reserviert bleiben muss.</td>
+        <td>Löschen, sofern die Adresse nicht bewusst reserviert bleiben muss.<br><code class="cmd">az network public-ip delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/publicIPAddresses/awf-orphaned-pip</code></td>
       </tr>
       <tr>
         <td><code>pip-old-gateway</code></td>
         <td>Ungenutzte öffentliche IP-Adresse</td>
+        <td><span class="sev sev-low">niedrig</span></td>
         <td>rg-web-old</td>
         <td>Standard</td>
         <td class="num">3,36 €</td>
-        <td>Löschen, sofern die Adresse nicht bewusst reserviert bleiben muss.</td>
+        <td>Löschen, sofern die Adresse nicht bewusst reserviert bleiben muss.<br><code class="cmd">az network public-ip delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/publicIPAddresses/pip-old-gateway</code></td>
       </tr>
       <tr>
         <td><code>awf-orphaned-disk</code></td>
         <td>Nicht angehängte Managed Disk</td>
+        <td><span class="sev sev-medium">mittel</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard_LRS (32 GB)</td>
         <td class="num">1,41 €</td>
-        <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.</td>
+        <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/disks/awf-orphaned-disk</code></td>
       </tr>
     </tbody>
   </table>
   </div>
 
-  <footer>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
+  <h2>Warum kostet das Geld?</h2>
+  <ul>
+    <li><strong>Nicht angehängte Managed Disk:</strong> Disks werden nach bereitgestellter Größe abgerechnet, auch wenn keine VM sie nutzt. (<a href="https://learn.microsoft.com/azure/virtual-machines/windows/find-unattached-disks">Doku</a>)</li>
+    <li><strong>VM gestoppt, aber nicht dealloziert:</strong> Im Zustand &#39;Stopped&#39; bleibt die Hardware reserviert und die Rechenleistung wird weiter verrechnet. (<a href="https://learn.microsoft.com/azure/virtual-machines/states-billing">Doku</a>)</li>
+    <li><strong>Ungenutzte öffentliche IP-Adresse:</strong> Standard-IPs werden pro Stunde verrechnet, auch ohne Zuordnung. (<a href="https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses">Doku</a>)</li>
+  </ul>
+
+  <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
 </main>
 </body>
 </html>

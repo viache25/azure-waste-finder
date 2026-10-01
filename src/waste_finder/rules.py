@@ -7,13 +7,7 @@ from importlib import resources
 from typing import Any, cast
 
 from waste_finder.models import Finding
-
-# rule name -> KQL file in waste_finder/queries
-RULES: dict[str, str] = {
-    "unattached_disk": "unattached_disks.kql",
-    "stopped_vm": "stopped_vms.kql",
-    "orphaned_public_ip": "orphaned_public_ips.kql",
-}
+from waste_finder.registry import REGISTRY
 
 # One Resource Graph result row.
 Row = dict[str, Any]
@@ -23,7 +17,7 @@ QueryRunner = Callable[[str], list[Row]]
 
 
 def load_query(rule: str) -> str:
-    return resources.files("waste_finder").joinpath("queries", RULES[rule]).read_text(encoding="utf-8")
+    return resources.files("waste_finder").joinpath("queries", REGISTRY[rule].query_file).read_text(encoding="utf-8")
 
 
 def row_to_finding(rule: str, row: Row) -> Finding:
@@ -37,10 +31,11 @@ def row_to_finding(rule: str, row: Row) -> Finding:
         size_gb=row.get("sizeGb"),
         os_type=row.get("osType"),
         tags=row.get("tags") or {},
+        severity=REGISTRY[rule].severity,
     )
 
 
-def find_waste(run_query: QueryRunner, rules: Iterable[str] = RULES) -> list[Finding]:
+def find_waste(run_query: QueryRunner, rules: Iterable[str] = REGISTRY) -> list[Finding]:
     findings: list[Finding] = []
     for rule in rules:
         for row in run_query(load_query(rule)):

@@ -17,17 +17,30 @@ Sie verlieren ca. **{{ summary.monthly_eur | eur }} pro Monat** (≈ {{ summary.
 
 ## Gefundene Ressourcen
 
-| # | Ressource | Problem | Ressourcengruppe | SKU | €/Monat | Empfehlung |
-|---|---|---|---|---|---:|---|
+| # | Ressource | Problem | Priorität | Ressourcengruppe | SKU | €/Monat | Empfehlung |
+|---|---|---|---|---|---|---:|---|
 {% for f in findings %}
-| {{ loop.index }} | `{{ f.name }}` | {{ rules[f.rule].title }} | {{ f.resource_group }} | {{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %} | {{ f.monthly_cost_eur | eur }} | {{ rules[f.rule].action }} |
+| {{ loop.index }} | `{{ f.name }}` | {{ rules[f.rule].title_de }} | {{ severities[f.severity] }} | {{ f.resource_group }} | {{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %} | {{ f.monthly_cost_eur | eur }} | {{ rules[f.rule].action_de }} |
 {% endfor %}
 
 ## Warum kostet das Geld?
 
-{% for key, info in rules.items() %}
-- **{{ info.title }}:** {{ info.why }}
+{% for rule in rules.values() %}
+- **{{ rule.title_de }}:** {{ rule.why_de }} ([Doku]({{ rule.docs_url }}))
 {% endfor %}
+{% if findings %}
+
+## Befehle
+
+Erst prüfen, dann ausführen. Das Tool selbst ändert nichts in der Subscription.
+
+```bash
+{% for f in findings %}
+# {{ f.name }}: {{ rules[f.rule].title_de }}
+{{ rules[f.rule].remediation_command(f.resource_id) }}
+{% endfor %}
+```
+{% endif %}
 
 ---
 

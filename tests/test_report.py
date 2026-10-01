@@ -33,3 +33,29 @@ def test_demo_run_writes_both_reports(tmp_path, capsys):
 def test_real_run_needs_subscription(monkeypatch):
     monkeypatch.delenv("AZURE_SUBSCRIPTION_ID", raising=False)
     assert main([]) == 2
+
+
+def test_summary_total_is_savings_not_cost():
+    fs = [
+        Finding("stopped_vm", "a", "a", "rg", "we", "x", monthly_cost_eur=10.0),
+        Finding("unattached_disk", "b", "b", "rg", "we", "x", monthly_cost_eur=50.0, monthly_savings_eur=20.0),
+    ]
+    s = summarize(fs)
+    assert (s.monthly_eur, s.unpriced) == (30.0, 0)
+
+
+def test_savings_default_to_full_cost():
+    f = Finding("stopped_vm", "a", "a", "rg", "we", "x", monthly_cost_eur=10.0)
+    assert f.savings_eur == 10.0
+    f.monthly_savings_eur = 4.0
+    assert f.savings_eur == 4.0
+    assert Finding("stopped_vm", "a", "a", "rg", "we", "x").savings_eur is None
+
+
+def test_report_shows_severity_docs_and_command(tmp_path):
+    assert main(["--demo", "--out-dir", str(tmp_path)]) == 0
+    for fmt in ("md", "html"):
+        text = (tmp_path / f"report.{fmt}").read_text(encoding="utf-8")
+        assert "Priorität" in text and "hoch" in text
+        assert "az vm deallocate --ids /subscriptions/" in text
+        assert "https://learn.microsoft.com/azure/virtual-machines/states-billing" in text

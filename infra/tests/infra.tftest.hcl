@@ -102,7 +102,7 @@ run "budget_enabled" {
 
   assert {
     condition = alltrue([
-      for n in azurerm_consumption_budget_resource_group.safety[0].notification : n.contact_emails == ["owner@example.com"]
+      for n in azurerm_consumption_budget_resource_group.safety[0].notification : n.contact_emails == tolist(["owner@example.com"])
     ])
     error_message = "Every budget notification must go to alert_email."
   }

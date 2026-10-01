@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6"
+  required_version = ">= 1.7" # terraform test with mock_provider
 
   required_providers {
     azurerm = {

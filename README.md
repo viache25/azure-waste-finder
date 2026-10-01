@@ -34,6 +34,7 @@ flowchart LR
 
 ```
 infra/                    Terraform: resource group, 5 € budget alert, 3 waste resources
+  tests/*.tftest.hcl      terraform test with mocked providers (no Azure login)
 scripts/stop-vm.(ps1|sh)  stops the demo VM WITHOUT deallocating it
 src/waste_finder/
   queries/*.kql           one Resource Graph query per rule
@@ -64,7 +65,7 @@ pytest
 
 ## Full run against a real subscription
 
-Prerequisites: Azure CLI, Terraform >= 1.6, Python >= 3.11, an Azure subscription (e.g. *Azure for Students*).
+Prerequisites: Azure CLI, Terraform >= 1.7, Python >= 3.11, an Azure subscription (e.g. *Azure for Students*).
 
 ```powershell
 az login
@@ -96,7 +97,8 @@ If `terraform apply` says the VM size is not available, set `location` or `vm_si
 
 - Authentication uses `DefaultAzureCredential`, i.e. your local `az login`. No keys or secrets in the code or the repo.
 - `*.tfstate` and `*.tfvars` are git-ignored: state contains resource IDs and the generated SSH key.
-- The demo VM has no public IP and password login is disabled.
+- The demo VM has no public IP and password login is disabled; the orphaned disk denies public network access. `terraform test` checks all of this in CI.
+- Checkov scans `infra/` on every PR. Findings that are intentional for a waste environment (no customer-managed key on an empty disk, no NSG on a subnet without public endpoints) are skipped inline with a reason.
 - The tool is **read-only**: it never changes or deletes anything in the subscription.
 
 ## Development
@@ -106,6 +108,8 @@ pip install -e ".[dev]"          # pytest, pytest-cov, ruff, mypy
 pytest --cov                     # tests + coverage; fails below the floor in pyproject.toml (95 %)
 ruff check . && ruff format --check .
 mypy                             # strict on src/
+cd infra && terraform init -backend=false && terraform test   # mocked providers, no Azure login
+tflint --init && tflint          # in infra/, config in infra/.tflint.hcl
 pip install pre-commit && pre-commit install   # ruff + terraform fmt before each commit
 ```
 
@@ -115,7 +119,8 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 |---|---|
 | `lint` | `ruff check`, `ruff format --check`, `mypy` (strict) |
 | `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report as artifact `demo-report` |
-| `terraform` | `terraform fmt -check`, `init -backend=false`, `validate` |
+| `terraform` | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked azurerm/tls providers: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login), `tflint` with the azurerm ruleset |
+| `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
 Dependabot opens weekly grouped PRs for pip, GitHub Actions and Terraform providers.
 

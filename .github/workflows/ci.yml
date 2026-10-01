@@ -76,3 +76,35 @@ jobs:
       - run: terraform fmt -check -recursive
       - run: terraform init -backend=false
       - run: terraform validate
+      # infra/tests/*.tftest.hcl, providers mocked: no Azure login, nothing is created
+      - run: terraform test
+      - uses: terraform-linters/setup-tflint@v6
+      - run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # plugin download from GitHub releases, avoids rate limits
+      - run: tflint --format compact
+
+  config-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload SARIF to the Security tab
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install checkov==3.3.21
+      # Report-only: findings go to the Security tab, the job does not fail on them.
+      # Intentional findings (it is a waste environment) are skipped inline in infra/ with a reason.
+      - run: >-
+          checkov -d infra --framework terraform --soft-fail --compact
+          -o cli -o sarif --output-file-path console,checkov.sarif
+      - uses: github/codeql-action/upload-sarif@v4
+        # Dependabot and fork PRs get a read-only token and cannot upload SARIF.
+        if: >-
+          !cancelled() && github.actor != 'dependabot[bot]' &&
+          (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        with:
+          sarif_file: checkov.sarif
+          category: checkov

@@ -24,6 +24,9 @@ python -m waste_finder --subscription <id>   # real run, needs `az login` (Reade
 cd infra
 terraform fmt -check -recursive
 terraform init -backend=false && terraform validate
+terraform test                          # infra/tests/*.tftest.hcl, mocked providers, needs Terraform >= 1.7
+tflint --init && tflint                 # config in infra/.tflint.hcl (azurerm ruleset)
+checkov -d . --framework terraform      # optional locally (pip install checkov); CI runs it report-only
 ```
 
 Windows: activate the venv with `.venv\Scripts\activate`; `scripts/stop-vm.ps1` instead of `stop-vm.sh`.
@@ -32,6 +35,8 @@ Windows: activate the venv with `.venv\Scripts\activate`; `scripts/stop-vm.ps1` 
 
 ```
 infra/                    Terraform: RG, 5 € budget alert, 3 waste resources (disk, VM, public IP)
+  tests/*.tftest.hcl      terraform test, mock_provider "azurerm" + "tls"
+  .tflint.hcl             tflint: recommended terraform preset + azurerm ruleset
 scripts/stop-vm.(ps1|sh)  `az vm stop` WITHOUT deallocate (Terraform can't leave a VM "stopped")
 src/waste_finder/
   models.py               Finding dataclass, HOURS_PER_MONTH = 730
@@ -61,4 +66,4 @@ Adding a rule today touches: a new `queries/*.kql`, `RULES` in `rules.py`, `PRIC
 
 ## CI
 
-`.github/workflows/ci.yml` runs on PRs and pushes to `main`: job `lint` (`ruff check`, `ruff format --check`, `mypy`), job `python` (pytest with coverage on 3.11 / 3.12 / 3.13, floor = `fail_under` in `pyproject.toml`; JUnit results published by `dorny/test-reporter`, skipped for Dependabot/fork PRs whose token cannot create check runs; artifacts `coverage-<version>` and, from 3.12, `demo-report`) and job `terraform` (`fmt -check`, `init -backend=false`, `validate`). Coverage floor per D7: measured value rounded down to 5, never below 80; raise it when coverage grows, never lower it to get green. Dependabot (`.github/dependabot.yml`) opens weekly grouped PRs for pip, GitHub Actions and Terraform providers; they are merged when CI is green.
+`.github/workflows/ci.yml` runs on PRs and pushes to `main`: job `lint` (`ruff check`, `ruff format --check`, `mypy`), job `python` (pytest with coverage on 3.11 / 3.12 / 3.13, floor = `fail_under` in `pyproject.toml`; JUnit results published by `dorny/test-reporter`, skipped for Dependabot/fork PRs whose token cannot create check runs; artifacts `coverage-<version>` and, from 3.12, `demo-report`) job `terraform` (`fmt -check`, `init -backend=false`, `validate`, `terraform test`, `tflint`) and job `config-scan` (Checkov on `infra/`, `--soft-fail`, SARIF uploaded to the Security tab, upload skipped for Dependabot/fork PRs). Intentional Checkov findings are skipped inline (`#checkov:skip=ID:reason`) in the resource block; fix real findings instead of skipping them. New Terraform resources get assertions in `infra/tests/`. Coverage floor per D7: measured value rounded down to 5, never below 80; raise it when coverage grows, never lower it to get green. Dependabot (`.github/dependabot.yml`) opens weekly grouped PRs for pip, GitHub Actions and Terraform providers; they are merged when CI is green.

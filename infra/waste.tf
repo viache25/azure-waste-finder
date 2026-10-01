@@ -2,6 +2,7 @@
 
 # 1) Managed disk that is not attached to any VM (e.g. left over after a VM was deleted).
 resource "azurerm_managed_disk" "orphaned" {
+  #checkov:skip=CKV_AZURE_93:Empty throwaway demo disk; platform-managed keys are enough, a CMK needs a paid Key Vault
   name                 = "${var.prefix}-orphaned-disk"
   resource_group_name  = azurerm_resource_group.demo.name
   location             = azurerm_resource_group.demo.location
@@ -9,6 +10,10 @@ resource "azurerm_managed_disk" "orphaned" {
   create_option        = "Empty"
   disk_size_gb         = 32
   tags                 = local.tags
+
+  # No SAS export / import over the internet.
+  public_network_access_enabled = false
+  network_access_policy         = "DenyAll"
 }
 
 # 2) Public IP that is not associated with anything. Standard SKU is billed per hour.
@@ -32,6 +37,7 @@ resource "azurerm_virtual_network" "demo" {
 }
 
 resource "azurerm_subnet" "demo" {
+  #checkov:skip=CKV2_AZURE_31:The only NIC belongs to the demo VM, which has no public IP; nothing inbound to filter
   name                 = "default"
   resource_group_name  = azurerm_resource_group.demo.name
   virtual_network_name = azurerm_virtual_network.demo.name
@@ -59,6 +65,7 @@ resource "tls_private_key" "vm" {
 }
 
 resource "azurerm_linux_virtual_machine" "stopped" {
+  #checkov:skip=CKV_AZURE_50:No extensions are declared; the VM only exists to be stopped
   name                            = "${var.prefix}-stopped-vm"
   resource_group_name             = azurerm_resource_group.demo.name
   location                        = azurerm_resource_group.demo.location

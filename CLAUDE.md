@@ -21,6 +21,7 @@ pre-commit install                      # optional: ruff + terraform fmt on comm
 pip install pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit -r /tmp/req.txt --no-deps --disable-pip   # what the CI audit job runs
 python -m waste_finder --demo           # offline demo run -> reports/report.md + report.html
 python -m waste_finder --subscription <id>   # real run, needs `az login` (Reader is enough)
+python -m waste_finder --all-subscriptions --rules stopped_vm --exclude '*/resourceGroups/rg-x/*' --min-savings 5
 
 cd infra
 terraform fmt -check -recursive
@@ -44,7 +45,10 @@ src/waste_finder/
                           why/action text, az command template, docs link); the single source of truth for rules
   models.py               Finding dataclass (severity, monthly_cost_eur, monthly_savings_eur), HOURS_PER_MONTH = 730
   queries/*.kql           one Resource Graph query per rule
-  rules.py                load_query(rule) via the registry, find_waste(run_query) -> list[Finding]
+  rules.py                load_query(rule) via the registry, find_waste(run_query, rules) -> list[Finding];
+                          Scope (subscriptions | management group | all readable) + resource_graph_runner(scope)
+  config.py               Settings from waste-finder.toml (tomllib) overridden by CLI flags; ignore tag
+                          `waste-finder:ignore=true` + exclude globs on the resource ID; min_monthly_savings threshold
   pricing.py              STRATEGIES (strategy name -> pricing fn), Retail Prices API fetcher with 24 h JSON cache
   report.py, templates/   Jinja2 Markdown + HTML report, German
   cli.py                  argparse entry point (`python -m waste_finder`, console script `waste-finder`)
@@ -52,7 +56,7 @@ src/waste_finder/
 tests/                    pytest, no network (test_fetchers.py fakes requests and the Resource Graph SDK)
 ```
 
-Flow: Resource Graph → `Finding`s → pricing → report. The query runner (`Callable[[str], list[dict]]`) and the price fetcher (`Callable[[str], list[dict]]`, takes an OData filter) are injected, which is how tests and `--demo` run without Azure. `demo_runner` maps a KQL text back to its rule, so every rule needs an entry in `demo/resource_graph.json`; `demo_fetcher` evaluates only simple `field eq 'value' and ...` filters, so pricing filters must stay in that shape (or the demo fetcher must learn the new shape).
+Flow: Resource Graph (scope) → `Finding`s of the selected rules → drop ignored/excluded → pricing → drop below threshold → report (grouped by subscription, counts of ignored and below-threshold findings). The query runner (`Callable[[str], list[dict]]`) and the price fetcher (`Callable[[str], list[dict]]`, takes an OData filter) are injected, which is how tests and `--demo` run without Azure. `demo_runner` maps a KQL text back to its rule, so every rule needs an entry in `demo/resource_graph.json`; `demo_fetcher` evaluates only simple `field eq 'value' and ...` filters, so pricing filters must stay in that shape (or the demo fetcher must learn the new shape).
 
 Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now, `monthly_savings_eur` is set only when acting saves less than the full cost (e.g. a downgrade). `Finding.savings_eur` falls back to the cost; the report total, the sort order and the CLI output use `savings_eur`.
 
@@ -63,7 +67,7 @@ Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now
 3. Pricing: reuse a strategy name from `STRATEGIES` in `pricing.py` or add a new function there (filters in `field eq 'value' and ...` shape so `demo_fetcher` can evaluate them).
 4. Demo data: rows under the rule id in `demo/resource_graph.json`, matching price items in `demo/prices.json`.
 5. Tests: pricing cases in `tests/test_pricing.py`; `tests/test_registry.py` already fails if the KQL file, the strategy or the demo rows are missing.
-6. README rules table; regenerate `docs/sample-report.md` / `.html` from `python -m waste_finder --demo`.
+6. README rules table and the rule ids in the `--rules` row of the flags table; regenerate `docs/sample-report.md` / `.html` from `python -m waste_finder --demo`.
 
 The report templates and the CLI read titles, severity, docs link and command from the registry; they need no change.
 
@@ -72,7 +76,9 @@ The report templates and the CLI read titles, severity, docs link and command fr
 - **Read-only tool.** Never add code that modifies or deletes Azure resources. Auth is `DefaultAzureCredential` only; no keys or secrets in code, tests or workflows.
 - **No Azure in automated runs.** CI and scheduled builder runs have no Azure credentials. New features must be testable offline with fixtures; live-Azure workflows must skip cleanly when repo variables are not set.
 - **Cost discipline.** New Terraform waste resources are opt-in, smallest SKU, README states their approximate €/hour. Nothing that creates Azure resources runs on a schedule.
-- **Prices** are list prices (Retail API, `currencyCode='EUR'`), monthly = hourly × 730. Disks are priced by the smallest tier that fits (32 GB Standard HDD → `S4 LRS`, Standard HDD starts at S4).
+- **Prices** are list prices (Retail API, `currencyCode='EUR'` unless `currency` is configured; the `*_eur` field names stay and then hold the configured currency; one price cache file per currency), monthly = hourly × 730. Disks are priced by the smallest tier that fits (32 GB Standard HDD → `S4 LRS`, Standard HDD starts at S4).
+- **Settings precedence**: defaults < `waste-finder.toml` < CLI flags; a flag replaces a list from the file. New settings go into `config.Settings`, `load_config` (unknown keys are rejected) and a CLI flag; tests in `tests/test_config.py`.
+- **Subscription grouping** uses `Finding.subscription_id`, parsed from the resource ID; demo data has two subscriptions and one resource tagged `waste-finder:ignore=true`.
 - **"Stopped" ≠ "deallocated"**: the VM rule matches `PowerState/stopped` only; deallocated VMs don't bill compute.
 - **Lint/types**: code passes `ruff` and `mypy --strict` (config in `pyproject.toml`) without blanket ignores; Resource Graph rows are `rules.Row`, price items `pricing.PriceItem`, pricing functions `pricing.PricingStrategy` (both `dict[str, Any]`).
 - **Language**: report text German; code, CLI help, README, docs, commits in English.

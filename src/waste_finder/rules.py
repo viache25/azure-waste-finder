@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from importlib import resources
 from typing import Any, cast
 
@@ -43,7 +44,22 @@ def find_waste(run_query: QueryRunner, rules: Iterable[str] = REGISTRY) -> list[
     return findings
 
 
-def resource_graph_runner(subscription_id: str) -> QueryRunner:
+@dataclass(frozen=True)
+class Scope:
+    """What Resource Graph searches: given subscriptions, one management group, or (neither) every
+    subscription the credential can read."""
+
+    subscriptions: tuple[str, ...] = ()
+    management_group: str | None = None
+
+    def label(self) -> str:
+        """For the report header (German)."""
+        if self.management_group:
+            return f"Management Group {self.management_group}"
+        return ", ".join(self.subscriptions) or "alle lesbaren Subscriptions"
+
+
+def resource_graph_runner(scope: Scope) -> QueryRunner:
     """Real runner: Azure Resource Graph, authenticated via DefaultAzureCredential (az login)."""
     from azure.identity import DefaultAzureCredential
     from azure.mgmt.resourcegraph import ResourceGraphClient
@@ -56,7 +72,14 @@ def resource_graph_runner(subscription_id: str) -> QueryRunner:
         skip_token = None
         while True:
             options = QueryRequestOptions(result_format="objectArray", skip_token=skip_token)
-            response = client.resources(QueryRequest(subscriptions=[subscription_id], query=query, options=options))
+            # Neither subscriptions nor management groups = every subscription the credential can read.
+            request = QueryRequest(
+                subscriptions=list(scope.subscriptions) or None,
+                management_groups=[scope.management_group] if scope.management_group else None,
+                query=query,
+                options=options,
+            )
+            response = client.resources(request)
             # SDK types `data` as a mapping; with result_format="objectArray" it is a list of rows.
             rows.extend(cast(list[Row], response.data))
             skip_token = response.skip_token

@@ -131,8 +131,10 @@ def price_findings(findings: list[Finding], fetch: PriceFetcher) -> list[Finding
     return findings
 
 
-def retail_api_fetcher(cache_file: Path | None = None, ttl_seconds: int = 24 * 3600) -> PriceFetcher:
-    """Real fetcher: calls the public API, follows paging, caches answers in a JSON file."""
+def retail_api_fetcher(
+    cache_file: Path | None = None, ttl_seconds: int = 24 * 3600, currency: str = CURRENCY
+) -> PriceFetcher:
+    """Real fetcher: calls the public API, follows paging, caches answers in a JSON file (one file per currency)."""
     cache: dict[str, dict[str, Any]] = {}
     if cache_file and cache_file.exists():
         cache = json.loads(cache_file.read_text(encoding="utf-8"))
@@ -144,7 +146,7 @@ def retail_api_fetcher(cache_file: Path | None = None, ttl_seconds: int = 24 * 3
             return cached
         items: list[PriceItem] = []
         url: str | None = API_URL
-        params: dict[str, str] | None = {"currencyCode": f"'{CURRENCY}'", "$filter": odata_filter}
+        params: dict[str, str] | None = {"currencyCode": f"'{currency}'", "$filter": odata_filter}
         while url:
             resp = requests.get(url, params=params, timeout=30)
             resp.raise_for_status()

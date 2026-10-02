@@ -34,21 +34,26 @@
 <body>
 <main>
   <h1>Azure Kostencheck: Verschwendungsbericht</h1>
-  <div class="meta">Subscription <code>{{ subscription }}</code> · {{ today }}</div>
-  {% if demo %}<div class="demo"><strong>Demo-Daten:</strong> fiktive Subscription und Beispielpreise, keine echte Umgebung.</div>{% endif %}
+  <div class="meta">Bereich <code>{{ scope }}</code> · {{ today }}</div>
+  {% if demo %}<div class="demo"><strong>Demo-Daten:</strong> fiktive Subscriptions und Beispielpreise, keine echte Umgebung.</div>{% endif %}
 
   <div class="total">
     Sie verlieren ca.
     <div class="big">{{ summary.monthly_eur | eur }} pro Monat</div>
     ≈ {{ summary.yearly_eur | eur }} pro Jahr durch {{ summary.count }} ungenutzte Ressourcen.
     {% if summary.unpriced %}<br>{{ summary.unpriced }} Ressource(n) ohne Preis, nicht in der Summe enthalten.{% endif %}
+    {% if summary.ignored %}<br>{{ summary.ignored }} Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).{% endif %}
+    {% if summary.below_threshold %}<br>{{ summary.below_threshold }} Ressource(n) unter der Schwelle von {{ min_savings | eur }} pro Monat nicht aufgeführt.{% endif %}
   </div>
 
+  {% for group in groups %}
+  <h2>Subscription <code>{{ group.subscription_id or "unbekannt" }}</code></h2>
+  <p>Ca. <strong>{{ group.monthly_eur | eur }} pro Monat</strong> durch {{ group.findings | length }} Ressource(n).</p>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">{{ currency_symbol }}/Monat</th><th>Empfehlung</th></tr></thead>
     <tbody>
-    {% for f in findings %}
+    {% for f in group.findings %}
       <tr>
         <td><code>{{ f.name }}</code></td>
         <td>{{ rules[f.rule].title_de }}</td>
@@ -62,6 +67,9 @@
     </tbody>
   </table>
   </div>
+  {% else %}
+  <p>Keine verschwendeten Ressourcen gefunden.</p>
+  {% endfor %}
 
   <h2>Warum kostet das Geld?</h2>
   <ul>
@@ -70,7 +78,7 @@
   {% endfor %}
   </ul>
 
-  <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
+  <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in {{ currency }}, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
 </main>
 </body>
 </html>

@@ -34,14 +34,16 @@
 <body>
 <main>
   <h1>Azure Kostencheck: Verschwendungsbericht</h1>
-  <div class="meta">Subscription <code>demo (Contoso)</code> · 2026-10-01</div>
-<div class="demo"><strong>Demo-Daten:</strong> fiktive Subscription und Beispielpreise, keine echte Umgebung.</div>
+  <div class="meta">Bereich <code>demo (Contoso)</code> · 2026-10-02</div>
+<div class="demo"><strong>Demo-Daten:</strong> fiktive Subscriptions und Beispielpreise, keine echte Umgebung.</div>
   <div class="total">
     Sie verlieren ca.
     <div class="big">232,08 € pro Monat</div>
     ≈ 2.784,96 € pro Jahr durch 6 ungenutzte Ressourcen.
-  </div>
+<br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).  </div>
 
+  <h2>Subscription <code>11111111-1111-1111-1111-111111111111</code></h2>
+  <p>Ca. <strong>215,77 € pro Monat</strong> durch 2 Ressource(n).</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
@@ -53,7 +55,7 @@
         <td>rg-test</td>
         <td>Standard_D4s_v5</td>
         <td class="num">148,19 €</td>
-        <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.<br><code class="cmd">az vm deallocate --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/build-agent-02</code></td>
+        <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.<br><code class="cmd">az vm deallocate --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/build-agent-02</code></td>
       </tr>
       <tr>
         <td><code>erp-db-old-data</code></td>
@@ -62,8 +64,17 @@
         <td>rg-legacy-erp</td>
         <td>Premium_LRS (512 GB)</td>
         <td class="num">67,58 €</td>
-        <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/disks/erp-db-old-data</code></td>
+        <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/disks/erp-db-old-data</code></td>
       </tr>
+    </tbody>
+  </table>
+  </div>
+  <h2>Subscription <code>00000000-0000-0000-0000-000000000000</code></h2>
+  <p>Ca. <strong>16,31 € pro Monat</strong> durch 4 Ressource(n).</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
+    <tbody>
       <tr>
         <td><code>awf-stopped-vm</code></td>
         <td>VM gestoppt, aber nicht dealloziert</td>

@@ -1,10 +1,10 @@
 # Azure Kostencheck: Verschwendungsbericht
 
 {% if demo %}
-> **Demo-Daten:** fiktive Subscription und Beispielpreise, keine echte Umgebung.
+> **Demo-Daten:** fiktive Subscriptions und Beispielpreise, keine echte Umgebung.
 
 {% endif %}
-**Subscription:** `{{ subscription }}`  
+**Bereich:** `{{ scope }}`  
 **Datum:** {{ today }}
 
 ## Ergebnis
@@ -14,13 +14,30 @@ Sie verlieren ca. **{{ summary.monthly_eur | eur }} pro Monat** (≈ {{ summary.
 
 {{ summary.unpriced }} Ressource(n) konnten nicht bepreist werden und sind in der Summe nicht enthalten.
 {% endif %}
+{% if summary.ignored %}
+
+{{ summary.ignored }} Ressource(n) ignoriert (Tag `waste-finder:ignore=true` oder Ausschluss in der Konfiguration).
+{% endif %}
+{% if summary.below_threshold %}
+
+{{ summary.below_threshold }} Ressource(n) unter der Schwelle von {{ min_savings | eur }} pro Monat nicht aufgeführt.
+{% endif %}
 
 ## Gefundene Ressourcen
+{% for group in groups %}
 
-| # | Ressource | Problem | Priorität | Ressourcengruppe | SKU | €/Monat | Empfehlung |
+### Subscription `{{ group.subscription_id or "unbekannt" }}`
+
+Ca. **{{ group.monthly_eur | eur }} pro Monat** durch {{ group.findings | length }} Ressource(n).
+
+| # | Ressource | Problem | Priorität | Ressourcengruppe | SKU | {{ currency_symbol }}/Monat | Empfehlung |
 |---|---|---|---|---|---|---:|---|
-{% for f in findings %}
+{% for f in group.findings %}
 | {{ loop.index }} | `{{ f.name }}` | {{ rules[f.rule].title_de }} | {{ severities[f.severity] }} | {{ f.resource_group }} | {{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %} | {{ f.monthly_cost_eur | eur }} | {{ rules[f.rule].action_de }} |
+{% endfor %}
+{% else %}
+
+Keine verschwendeten Ressourcen gefunden.
 {% endfor %}
 
 ## Warum kostet das Geld?
@@ -44,4 +61,4 @@ Erst prüfen, dann ausführen. Das Tool selbst ändert nichts in der Subscriptio
 
 ---
 
-*Preise: Azure Retail Prices API (Listenpreise in EUR, {{ 730 }} h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.*
+*Preise: Azure Retail Prices API (Listenpreise in {{ currency }}, {{ 730 }} h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.*

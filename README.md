@@ -33,7 +33,8 @@ flowchart LR
     REG[registry.py<br/>rules as data] -.-> RG
     REG -.-> PR
     AZ -->|KQL queries| RG[rules.py<br/>Resource Graph]
-    RG -->|Findings| PR[pricing.py<br/>Retail Prices API]
+    CFG[config.py<br/>waste-finder.toml + flags] -.-> RG
+    RG -->|Findings minus ignored| PR[pricing.py<br/>Retail Prices API]
     PR -->|€ per month| RP[report.py<br/>Markdown + HTML]
 ```
 
@@ -44,12 +45,13 @@ scripts/stop-vm.(ps1|sh)  stops the demo VM WITHOUT deallocating it
 src/waste_finder/
   registry.py             one entry per rule: titles, severity, KQL file, pricing strategy, remediation
   queries/*.kql           one Resource Graph query per rule
-  rules.py                runs the queries -> list[Finding]
+  rules.py                runs the queries over the chosen scope -> list[Finding]
+  config.py               waste-finder.toml + CLI flags: rules, exclusions, threshold, currency
   pricing.py              pricing strategies: Retail Prices API -> €/month per finding (cached 24 h)
   report.py, templates/   German client report (Markdown + HTML)
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (52 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (99 tests), runs fully offline, coverage floor 95 %
 ```
 
 Design choices:
@@ -90,6 +92,7 @@ cd ..
 # 3. Find it
 $env:AZURE_SUBSCRIPTION_ID = az account show --query id -o tsv
 python -m waste_finder                 # writes reports/report.md and reports/report.html
+                                       # (see "Scope, rules and exclusions" for more subscriptions)
 
 # 4. Clean up - always
 cd infra
@@ -99,6 +102,47 @@ terraform destroy
 The demo environment uses the smallest SKUs (B1s VM, 32 GB Standard HDD, one Standard IP) and costs a few cents per hour. A budget alert on the resource group e-mails you at 50 % of 5 €.
 
 If `terraform apply` says the VM size is not available, set `location` or `vm_size` in `terraform.tfvars`. If your subscription type does not support budgets, set `enable_budget = false`.
+
+## Scope, rules and exclusions
+
+```bash
+waste-finder --subscription <id> [--subscription <id2> ...]   # default: $AZURE_SUBSCRIPTION_ID
+waste-finder --all-subscriptions                              # every subscription the login can read
+waste-finder --management-group <mg-id>                       # all subscriptions below a management group
+waste-finder --rules stopped_vm,orphaned_public_ip            # only these rules
+waste-finder --exclude '*/resourceGroups/rg-sandbox/*'        # glob on the resource ID, repeatable
+waste-finder --min-savings 5                                  # leave out findings that save < 5 per month
+waste-finder --currency CHF                                   # Retail API currency (default EUR)
+waste-finder --config path/to/waste-finder.toml               # default: ./waste-finder.toml if present
+```
+
+| Flag | Meaning |
+|---|---|
+| `--subscription ID` | Subscription to scan; repeat for several. Default `$AZURE_SUBSCRIPTION_ID` |
+| `--all-subscriptions` | Every subscription the credential can read (Resource Graph at tenant scope) |
+| `--management-group ID` | All subscriptions below this management group |
+| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`) |
+| `--exclude PATTERN` | Ignore resources whose ID matches the glob (case-insensitive); repeatable |
+| `--min-savings AMOUNT` | Leave out findings that save less per month; unpriced findings stay in |
+| `--currency CODE` | Currency for list prices, e.g. `EUR`, `CHF`, `USD` (`--demo` always uses its EUR sample prices) |
+| `--config PATH` | Config file; without it `./waste-finder.toml` is used when it exists |
+| `--out-dir DIR` | Where `report.md` and `report.html` go (default `reports/`) |
+| `--demo` | Built-in fake data, no Azure access |
+
+The three scope flags are mutually exclusive. The report groups findings by subscription, with a subtotal for each.
+
+**Ignoring resources:** tag a resource `waste-finder:ignore=true` (key and value case-insensitive) and it is never reported. Ignored resources, by tag or by `exclude` pattern, are counted in the report as "ignoriert"; findings below the threshold are counted separately. The demo subscription has one tagged public IP to show this.
+
+**Config file** (`waste-finder.toml`, all keys optional; unknown keys are an error). Precedence: defaults < file < CLI flags; a flag replaces the file value, including lists.
+
+```toml
+rules = ["unattached_disk", "stopped_vm", "orphaned_public_ip"]   # default: all rules
+exclude = ["/subscriptions/*/resourceGroups/rg-sandbox/*"]
+currency = "EUR"
+
+[thresholds]
+min_monthly_savings = 1.0
+```
 
 ## Security
 

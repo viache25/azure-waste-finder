@@ -5,9 +5,11 @@ Example file:
     rules = ["unattached_disk", "stopped_vm"]       # default: all rules
     exclude = ["/subscriptions/*/resourceGroups/rg-sandbox/*"]
     currency = "EUR"
+    formats = ["md", "html", "json"]                 # default: md, html
 
     [thresholds]
     min_monthly_savings = 1.0                        # leave out findings that save less per month
+    fail_over = 100                                  # exit code 3 when the monthly total is higher
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from waste_finder.export import DEFAULT_FORMATS, FORMATS
 from waste_finder.models import Finding
 from waste_finder.registry import REGISTRY
 
@@ -32,8 +35,8 @@ CURRENCIES = frozenset(
     {"USD", "AUD", "BRL", "CAD", "CHF", "CNY", "DKK", "EUR", "GBP", "INR", "JPY", "KRW", "NOK", "NZD", "SEK", "TWD"}
 )
 
-TOP_LEVEL_KEYS = {"rules", "exclude", "currency", "thresholds"}
-THRESHOLD_KEYS = {"min_monthly_savings"}
+TOP_LEVEL_KEYS = {"rules", "exclude", "currency", "formats", "thresholds"}
+THRESHOLD_KEYS = {"min_monthly_savings", "fail_over"}
 
 
 class ConfigError(ValueError):
@@ -46,6 +49,8 @@ class Settings:
     exclude: tuple[str, ...] = ()  # glob patterns on the resource ID, case-insensitive
     min_monthly_savings: float = 0.0
     currency: str = "EUR"
+    formats: tuple[str, ...] = DEFAULT_FORMATS
+    fail_over: float | None = None  # exit code 3 when the monthly total is above this
     source: str = field(default="defaults", compare=False)  # where the file values came from, for messages
 
 
@@ -66,10 +71,28 @@ def parse_currency(value: str) -> str:
     return currency
 
 
-def parse_min_savings(value: Any) -> float:
+def parse_formats(value: Iterable[str]) -> tuple[str, ...]:
+    formats = tuple(dict.fromkeys(f.strip().lower() for f in value if f.strip()))
+    unknown = [f for f in formats if f not in FORMATS]
+    if unknown:
+        raise ConfigError(f"unknown format(s): {', '.join(unknown)} (known: {', '.join(FORMATS)})")
+    if not formats:
+        raise ConfigError("no output format selected")
+    return formats
+
+
+def parse_amount(value: Any, name: str = "min_monthly_savings") -> float:
     if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise ConfigError(f"min_monthly_savings must be a number >= 0, got {value!r}")
+        raise ConfigError(f"{name} must be a number >= 0, got {value!r}")
     return float(value)
+
+
+def parse_min_savings(value: Any) -> float:
+    return parse_amount(value, "min_monthly_savings")
+
+
+def parse_fail_over(value: Any) -> float:
+    return parse_amount(value, "fail_over")
 
 
 def _string_list(data: Mapping[str, Any], key: str) -> list[str]:
@@ -99,12 +122,16 @@ def load_config(path: Path) -> dict[str, Any]:
         if not isinstance(data["currency"], str):
             raise ConfigError("currency must be a string")
         values["currency"] = parse_currency(data["currency"])
+    if "formats" in data:
+        values["formats"] = parse_formats(_string_list(data, "formats"))
     if "thresholds" in data:
         thresholds = data["thresholds"]
         if not isinstance(thresholds, dict) or set(thresholds) - THRESHOLD_KEYS:
             raise ConfigError(f"[thresholds] supports only: {', '.join(sorted(THRESHOLD_KEYS))}")
         if "min_monthly_savings" in thresholds:
             values["min_monthly_savings"] = parse_min_savings(thresholds["min_monthly_savings"])
+        if "fail_over" in thresholds:
+            values["fail_over"] = parse_fail_over(thresholds["fail_over"])
     return values
 
 

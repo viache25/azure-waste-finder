@@ -44,6 +44,7 @@ def test_defaults_without_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     s = resolve_settings(None, {})
     assert s == Settings(rules=tuple(REGISTRY), exclude=(), min_monthly_savings=0.0, currency="EUR")
+    assert (s.formats, s.fail_over) == (("md", "html"), None)
     assert s.source == "defaults"
 
 
@@ -87,12 +88,22 @@ def test_cli_values_override_file_values(config_file):
         ("[thresholds]\nmin_savings = 1", "supports only"),
         ("[thresholds]\nmin_monthly_savings = -1", ">= 0"),
         ("[thresholds]\nmin_monthly_savings = true", ">= 0"),
+        ('formats = ["pdf"]', "unknown format"),
+        ("formats = []", "no output format"),
+        ("[thresholds]\nfail_over = -5", "fail_over must be"),
         ("rules = [", "cannot read"),
     ],
 )
 def test_invalid_config_is_rejected(config_file, text, message):
     with pytest.raises(ConfigError, match=message):
         load_config(config_file(text))
+
+
+def test_formats_and_fail_over_from_file_and_flags(config_file):
+    path = config_file('formats = ["JSON", "csv", "json"]\n[thresholds]\nfail_over = 50')
+    assert load_config(path) == {"formats": ("json", "csv"), "fail_over": 50.0}
+    s = resolve_settings(path, {"formats": ("sarif",), "fail_over": None})
+    assert (s.formats, s.fail_over) == (("sarif",), 50.0)
 
 
 def test_missing_explicit_config_is_an_error(tmp_path):
@@ -163,7 +174,14 @@ def test_demo_keeps_eur_prices(config_file, tmp_path, capsys):
 
 @pytest.mark.parametrize(
     "args",
-    [["--rules", "nope"], ["--currency", "XYZ"], ["--min-savings", "-1"], ["--config", "missing.toml"]],
+    [
+        ["--rules", "nope"],
+        ["--currency", "XYZ"],
+        ["--min-savings", "-1"],
+        ["--config", "missing.toml"],
+        ["--format", "md,pdf"],
+        ["--fail-over", "-1"],
+    ],
 )
 def test_cli_rejects_bad_settings(tmp_path, capsys, args):
     assert main(["--demo", "--out-dir", str(tmp_path), *args]) == 2

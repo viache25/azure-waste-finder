@@ -36,6 +36,7 @@ flowchart LR
     CFG[config.py<br/>waste-finder.toml + flags] -.-> RG
     RG -->|Findings minus ignored| PR[pricing.py<br/>Retail Prices API]
     PR -->|€ per month| RP[report.py<br/>Markdown + HTML]
+    PR -->|€ per month| EX[export.py<br/>JSON, CSV, SARIF]
 ```
 
 ```
@@ -49,9 +50,11 @@ src/waste_finder/
   config.py               waste-finder.toml + CLI flags: rules, exclusions, threshold, currency
   pricing.py              pricing strategies: Retail Prices API -> €/month per finding (cached 24 h)
   report.py, templates/   German client report (Markdown + HTML)
+  export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (99 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (121 tests), runs fully offline, coverage floor 95 %
+docs/report.schema.json   JSON Schema of report.json
 ```
 
 Design choices:
@@ -114,6 +117,8 @@ waste-finder --exclude '*/resourceGroups/rg-sandbox/*'        # glob on the reso
 waste-finder --min-savings 5                                  # leave out findings that save < 5 per month
 waste-finder --currency CHF                                   # Retail API currency (default EUR)
 waste-finder --config path/to/waste-finder.toml               # default: ./waste-finder.toml if present
+waste-finder --format md,html,json,csv,sarif                  # output formats (default md,html)
+waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 above 100 per month; CI summary
 ```
 
 | Flag | Meaning |
@@ -125,8 +130,11 @@ waste-finder --config path/to/waste-finder.toml               # default: ./waste
 | `--exclude PATTERN` | Ignore resources whose ID matches the glob (case-insensitive); repeatable |
 | `--min-savings AMOUNT` | Leave out findings that save less per month; unpriced findings stay in |
 | `--currency CODE` | Currency for list prices, e.g. `EUR`, `CHF`, `USD` (`--demo` always uses its EUR sample prices) |
+| `--format A,B` | Output formats: `md`, `html`, `json`, `csv`, `sarif` (default `md,html`); written as `report.<format>` |
+| `--fail-over AMOUNT` | Exit with code 3 when the monthly waste is above this amount (reports are still written) |
+| `--summary FILE` | Append a short Markdown summary to this file, e.g. `$GITHUB_STEP_SUMMARY`; an empty value is ignored |
 | `--config PATH` | Config file; without it `./waste-finder.toml` is used when it exists |
-| `--out-dir DIR` | Where `report.md` and `report.html` go (default `reports/`) |
+| `--out-dir DIR` | Where the `report.<format>` files go (default `reports/`) |
 | `--demo` | Built-in fake data, no Azure access |
 
 The three scope flags are mutually exclusive. The report groups findings by subscription, with a subtotal for each.
@@ -139,10 +147,31 @@ The three scope flags are mutually exclusive. The report groups findings by subs
 rules = ["unattached_disk", "stopped_vm", "orphaned_public_ip"]   # default: all rules
 exclude = ["/subscriptions/*/resourceGroups/rg-sandbox/*"]
 currency = "EUR"
+formats = ["md", "html", "json"]   # default: md, html
 
 [thresholds]
 min_monthly_savings = 1.0
+fail_over = 100.0                  # exit code 3 when the monthly total is higher
 ```
+
+## Output formats and exit codes
+
+| Format | File | Use |
+|---|---|---|
+| `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription |
+| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.0`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
+| `csv` | `report.csv` | One row per finding (subscription, resource group, rule, severity, cost, savings, currency, resource ID, `az` command) for Excel |
+| `sarif` | `report.sarif` | SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding (`high` → error, `medium` → warning, `low`/`info` → note). Azure resources are not files, so the resource ID is the alert's path; a fingerprint of rule + resource ID keeps alerts stable, so cleaning up a resource closes its alert |
+
+Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`sarif_file: reports/report.sarif`, `category: azure-waste-finder`) to see findings under Security → Code scanning.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Run completed (waste may still have been found) |
+| `2` | Usage or config error (unknown rule, format or currency, bad config file, no subscription given) |
+| `3` | Monthly waste is above `--fail-over` / `fail_over` (strictly greater); all reports were written |
+
+`--summary` appends a few lines (total, threshold verdict, one row per rule) to a file. In GitHub Actions, `--summary "$GITHUB_STEP_SUMMARY"` puts them on the run's summary page; CI does this for the demo run.
 
 ## Security
 
@@ -173,7 +202,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 |---|---|
 | `lint` | `ruff check`, `ruff format --check`, `mypy` (strict) |
 | `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
-| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report as artifact `demo-report` |
+| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
 | `terraform` | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked azurerm/tls providers: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 

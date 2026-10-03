@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/viache25/azure-waste-finder/blob/main/docs/report.schema.json",
+  "title": "Azure Waste Finder report",
+  "description": "Output of `waste-finder --format json` (report.json). Amounts are monthly, in `currency`, list prices with 730 h per month.",
+  "type": "object",
+  "required": ["schema_version", "tool", "generated", "scope", "demo", "currency", "summary", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "MAJOR.MINOR. Minor bumps add optional fields; major bumps rename or remove fields.",
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "const": "azure-waste-finder" },
+        "version": { "type": "string" }
+      }
+    },
+    "generated": { "description": "Date of the run (ISO 8601).", "type": "string", "format": "date" },
+    "scope": { "description": "What was scanned, e.g. `subscription 1234…` or `all subscriptions`.", "type": "string" },
+    "demo": { "description": "True for `--demo` runs on built-in fake data.", "type": "boolean" },
+    "currency": { "description": "ISO 4217 code of all amounts.", "type": "string", "pattern": "^[A-Z]{3}$" },
+    "summary": {
+      "type": "object",
+      "required": ["count", "monthly_savings", "yearly_savings", "unpriced", "ignored", "below_threshold", "min_monthly_savings"],
+      "additionalProperties": false,
+      "properties": {
+        "count": { "description": "Number of reported findings.", "type": "integer", "minimum": 0 },
+        "monthly_savings": { "description": "Sum of `monthly_savings` over all findings (unpriced count as 0).", "type": "number", "minimum": 0 },
+        "yearly_savings": { "description": "`monthly_savings` × 12.", "type": "number", "minimum": 0 },
+        "unpriced": { "description": "Findings without a price, not part of the total.", "type": "integer", "minimum": 0 },
+        "ignored": { "description": "Resources skipped by the ignore tag or an exclude pattern; not in `findings`.", "type": "integer", "minimum": 0 },
+        "below_threshold": { "description": "Findings saving less than `min_monthly_savings`; not in `findings`.", "type": "integer", "minimum": 0 },
+        "min_monthly_savings": { "type": "number", "minimum": 0 }
+      }
+    },
+    "findings": {
+      "description": "Sorted by `monthly_savings`, highest first.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "amount": { "type": ["number", "null"], "minimum": 0 },
+    "finding": {
+      "type": "object",
+      "required": [
+        "rule", "title_de", "title_en", "severity", "resource_id", "subscription_id", "name", "resource_group",
+        "location", "sku", "size_gb", "os_type", "tags", "monthly_cost", "monthly_savings", "price_note",
+        "command", "docs_url"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rule": { "description": "Rule id from the registry, e.g. `stopped_vm`.", "type": "string" },
+        "title_de": { "type": "string" },
+        "title_en": { "type": "string" },
+        "severity": { "enum": ["high", "medium", "low", "info"] },
+        "resource_id": { "type": "string" },
+        "subscription_id": { "description": "Parsed from `resource_id`; empty if it has none.", "type": "string" },
+        "name": { "type": "string" },
+        "resource_group": { "type": "string" },
+        "location": { "type": "string" },
+        "sku": { "type": "string" },
+        "size_gb": { "type": ["integer", "null"] },
+        "os_type": { "type": ["string", "null"] },
+        "tags": { "type": "object", "additionalProperties": { "type": "string" } },
+        "monthly_cost": { "description": "What the resource costs now; null if no price was found.", "$ref": "#/$defs/amount" },
+        "monthly_savings": { "description": "What acting on the finding saves; equals `monthly_cost` unless the action is a downgrade.", "$ref": "#/$defs/amount" },
+        "price_note": { "description": "How the price was derived, e.g. `0.0112 €/h × 730 h`.", "type": "string" },
+        "command": { "description": "The `az` command that fixes it. The tool never runs it.", "type": "string" },
+        "docs_url": { "type": "string" }
+      }
+    }
+  }
+}

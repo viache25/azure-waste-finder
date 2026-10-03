@@ -72,7 +72,10 @@ jobs:
             junit.xml
       - name: Demo report
         if: matrix.python-version == '3.12'
-        run: python -m waste_finder --demo --out-dir reports
+        # All output formats; the short summary appears on the run's summary page.
+        run: >-
+          python -m waste_finder --demo --format md,html,json,csv,sarif --out-dir reports
+          --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: matrix.python-version == '3.12'
         with:

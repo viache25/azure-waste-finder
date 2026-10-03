@@ -22,6 +22,7 @@ pip install pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-aud
 python -m waste_finder --demo           # offline demo run -> reports/report.md + report.html
 python -m waste_finder --subscription <id>   # real run, needs `az login` (Reader is enough)
 python -m waste_finder --all-subscriptions --rules stopped_vm --exclude '*/resourceGroups/rg-x/*' --min-savings 5
+python -m waste_finder --demo --format md,html,json,csv,sarif --fail-over 100 --summary summary.md   # exit code 3
 
 cd infra
 terraform fmt -check -recursive
@@ -48,15 +49,20 @@ src/waste_finder/
   rules.py                load_query(rule) via the registry, find_waste(run_query, rules) -> list[Finding];
                           Scope (subscriptions | management group | all readable) + resource_graph_runner(scope)
   config.py               Settings from waste-finder.toml (tomllib) overridden by CLI flags; ignore tag
-                          `waste-finder:ignore=true` + exclude globs on the resource ID; min_monthly_savings threshold
+                          `waste-finder:ignore=true` + exclude globs on the resource ID; min_monthly_savings threshold;
+                          formats, fail_over
   pricing.py              STRATEGIES (strategy name -> pricing fn), Retail Prices API fetcher with 24 h JSON cache
   report.py, templates/   Jinja2 Markdown + HTML report, German
-  cli.py                  argparse entry point (`python -m waste_finder`, console script `waste-finder`)
+  export.py               FORMATS; JSON (schema_version, docs/report.schema.json), CSV, SARIF 2.1.0 exporters;
+                          render_summary (German Markdown for --summary / $GITHUB_STEP_SUMMARY)
+  cli.py                  argparse entry point (`python -m waste_finder`, console script `waste-finder`);
+                          exit codes 0 ok, 2 usage/config error, 3 monthly waste above --fail-over
   demo.py, demo/*.json    fake subscription + price list for --demo and tests
+docs/report.schema.json   JSON Schema of report.json; tests validate the demo JSON against it (jsonschema, dev extra)
 tests/                    pytest, no network (test_fetchers.py fakes requests and the Resource Graph SDK)
 ```
 
-Flow: Resource Graph (scope) → `Finding`s of the selected rules → drop ignored/excluded → pricing → drop below threshold → report (grouped by subscription, counts of ignored and below-threshold findings). The query runner (`Callable[[str], list[dict]]`) and the price fetcher (`Callable[[str], list[dict]]`, takes an OData filter) are injected, which is how tests and `--demo` run without Azure. `demo_runner` maps a KQL text back to its rule, so every rule needs an entry in `demo/resource_graph.json`; `demo_fetcher` evaluates only simple `field eq 'value' and ...` filters, so pricing filters must stay in that shape (or the demo fetcher must learn the new shape).
+Flow: Resource Graph (scope) → `Finding`s of the selected rules → drop ignored/excluded → pricing → drop below threshold → report in the selected formats (md/html grouped by subscription, counts of ignored and below-threshold findings; json/csv/sarif from `export.py`) → optional summary → exit code 3 if the total is above `fail_over`. The query runner (`Callable[[str], list[dict]]`) and the price fetcher (`Callable[[str], list[dict]]`, takes an OData filter) are injected, which is how tests and `--demo` run without Azure. `demo_runner` maps a KQL text back to its rule, so every rule needs an entry in `demo/resource_graph.json`; `demo_fetcher` evaluates only simple `field eq 'value' and ...` filters, so pricing filters must stay in that shape (or the demo fetcher must learn the new shape).
 
 Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now, `monthly_savings_eur` is set only when acting saves less than the full cost (e.g. a downgrade). `Finding.savings_eur` falls back to the cost; the report total, the sort order and the CLI output use `savings_eur`.
 
@@ -69,7 +75,7 @@ Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now
 5. Tests: pricing cases in `tests/test_pricing.py`; `tests/test_registry.py` already fails if the KQL file, the strategy or the demo rows are missing.
 6. README rules table and the rule ids in the `--rules` row of the flags table; regenerate `docs/sample-report.md` / `.html` from `python -m waste_finder --demo`.
 
-The report templates and the CLI read titles, severity, docs link and command from the registry; they need no change.
+The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titles, severity, docs link and command from the registry; they need no change.
 
 ## Conventions and gotchas
 
@@ -78,6 +84,7 @@ The report templates and the CLI read titles, severity, docs link and command fr
 - **Cost discipline.** New Terraform waste resources are opt-in, smallest SKU, README states their approximate €/hour. Nothing that creates Azure resources runs on a schedule.
 - **Prices** are list prices (Retail API, `currencyCode='EUR'` unless `currency` is configured; the `*_eur` field names stay and then hold the configured currency; one price cache file per currency), monthly = hourly × 730. Disks are priced by the smallest tier that fits (32 GB Standard HDD → `S4 LRS`, Standard HDD starts at S4).
 - **Settings precedence**: defaults < `waste-finder.toml` < CLI flags; a flag replaces a list from the file. New settings go into `config.Settings`, `load_config` (unknown keys are rejected) and a CLI flag; tests in `tests/test_config.py`.
+- **JSON output** is a contract (later runs read it for trends): changing a field means bumping `export.SCHEMA_VERSION` (minor = new optional field, major = rename/removal) and updating `docs/report.schema.json`; the schema has `additionalProperties: false`, so the tests catch drift.
 - **Subscription grouping** uses `Finding.subscription_id`, parsed from the resource ID; demo data has two subscriptions and one resource tagged `waste-finder:ignore=true`.
 - **"Stopped" ≠ "deallocated"**: the VM rule matches `PowerState/stopped` only; deallocated VMs don't bill compute.
 - **Lint/types**: code passes `ruff` and `mypy --strict` (config in `pyproject.toml`) without blanket ignores; Resource Graph rows are `rules.Row`, price items `pricing.PriceItem`, pricing functions `pricing.PricingStrategy` (both `dict[str, Any]`).
@@ -86,6 +93,6 @@ The report templates and the CLI read titles, severity, docs link and command fr
 
 ## CI
 
-`.github/workflows/ci.yml` runs on PRs and pushes to `main`: job `lint` (`ruff check`, `ruff format --check`, `mypy`), job `audit` (`pip-audit` on `pip freeze --exclude-editable` of the installed `.[dev]` env, so the runner's own pip/setuptools are not audited; fails on any known vulnerability, fix by raising the lower bound in `pyproject.toml`), job `python` (pytest with coverage on 3.11 / 3.12 / 3.13, floor = `fail_under` in `pyproject.toml`; JUnit results published by `dorny/test-reporter`, skipped for Dependabot/fork PRs whose token cannot create check runs; artifacts `coverage-<version>` and, from 3.12, `demo-report`) job `terraform` (`fmt -check`, `init -backend=false`, `validate`, `terraform test`, `tflint`) and job `config-scan` (Checkov on `infra/`, `--soft-fail`, SARIF uploaded to the Security tab, upload skipped for Dependabot/fork PRs). Intentional Checkov findings are skipped inline (`#checkov:skip=ID:reason`) in the resource block; fix real findings instead of skipping them. New Terraform resources get assertions in `infra/tests/`. Coverage floor per D7: measured value rounded down to 5, never below 80; raise it when coverage grows, never lower it to get green. `.github/workflows/codeql.yml` runs CodeQL (Python, default query suite, `build-mode: none`) on PRs, `main` and weekly; results go to the Security tab. Vulnerability reporting and scope: `SECURITY.md`.
+`.github/workflows/ci.yml` runs on PRs and pushes to `main`: job `lint` (`ruff check`, `ruff format --check`, `mypy`), job `audit` (`pip-audit` on `pip freeze --exclude-editable` of the installed `.[dev]` env, so the runner's own pip/setuptools are not audited; fails on any known vulnerability, fix by raising the lower bound in `pyproject.toml`), job `python` (pytest with coverage on 3.11 / 3.12 / 3.13, floor = `fail_under` in `pyproject.toml`; JUnit results published by `dorny/test-reporter`, skipped for Dependabot/fork PRs whose token cannot create check runs; artifacts `coverage-<version>` and, from 3.12, `demo-report` with all five formats and the summary on the run page) job `terraform` (`fmt -check`, `init -backend=false`, `validate`, `terraform test`, `tflint`) and job `config-scan` (Checkov on `infra/`, `--soft-fail`, SARIF uploaded to the Security tab, upload skipped for Dependabot/fork PRs). Intentional Checkov findings are skipped inline (`#checkov:skip=ID:reason`) in the resource block; fix real findings instead of skipping them. New Terraform resources get assertions in `infra/tests/`. Coverage floor per D7: measured value rounded down to 5, never below 80; raise it when coverage grows, never lower it to get green. `.github/workflows/codeql.yml` runs CodeQL (Python, default query suite, `build-mode: none`) on PRs, `main` and weekly; results go to the Security tab. Vulnerability reporting and scope: `SECURITY.md`.
 
 Dependabot (`.github/dependabot.yml`) opens weekly PRs for pip, GitHub Actions and Terraform providers: minor + patch bumps grouped into one PR per ecosystem, each major bump as its own PR. Merge policy: squash-merge a Dependabot PR once CI is green; a major bump that fails CI is fixed on its branch if the fix is small and in scope, otherwise closed with a one-line reason; if a merged bump makes a statement in CLAUDE.md, README.md or the Stack line of issue #1 stale, fix it.

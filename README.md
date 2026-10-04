@@ -17,6 +17,8 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 
 *Sample report generated with `--demo` (fictional subscription, sample prices). See [docs/sample-report.md](docs/sample-report.md).*
 
+**Live demo report: <https://viache25.github.io/azure-waste-finder/>**. It is the HTML report of `--demo`, rebuilt from `main` after every green CI run, with [report.json](https://viache25.github.io/azure-waste-finder/report.json) ([schema](https://viache25.github.io/azure-waste-finder/report.schema.json)), [report.md](https://viache25.github.io/azure-waste-finder/report.md) and [report.csv](https://viache25.github.io/azure-waste-finder/report.csv) next to it.
+
 ## What it detects
 
 | Rule | Severity | Why it wastes money | Recommended action |
@@ -321,6 +323,8 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 ### Continuous delivery
 
 `.github/workflows/cd.yml` runs when the CI workflow has finished **successfully on `main`** (`workflow_run`), builds exactly the tested commit (`workflow_run.head_sha`), smoke-tests it, pushes `ghcr.io/viache25/azure-waste-finder:<short sha>` and `:latest` with `GITHUB_TOKEN`, then scans the image with Trivy (report-only, unfixed CVEs skipped). Findings appear under Security → Code scanning, category `trivy-image`. Dependabot keeps the digest-pinned base image current.
+
+`.github/workflows/pages.yml` is triggered the same way (green CI on `main`, tested commit): it installs the package, runs `waste-finder --demo --format html,json,md,csv` and deploys the result to GitHub Pages (source "GitHub Actions", environment `github-pages`) as the [live demo report](https://viache25.github.io/azure-waste-finder/): `index.html` is the HTML report, next to `report.json`, `report.md`, `report.csv` and `report.schema.json`. Only demo data is published, never a real subscription.
 
 ### Releases
 

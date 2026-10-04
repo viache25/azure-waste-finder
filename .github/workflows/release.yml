@@ -1,0 +1,96 @@
+name: Release
+
+# Push a tag like v0.3.0 on main: build sdist + wheel (version from the tag via setuptools-scm), run the tests
+# against the built wheel, then create a GitHub Release with generated notes and both files attached.
+# PyPI publishing (trusted publishing, no token) runs only when the repo variable PYPI_PUBLISH is "true".
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # setuptools-scm needs the tag history
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install build==1.6.1 twine==7.0.0
+      - run: python -m build
+      - name: Version matches the tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ls "dist/azure_waste_finder-${version}-py3-none-any.whl" "dist/azure_waste_finder-${version}.tar.gz"
+      - run: twine check --strict dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  test-wheel:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7 # for tests/ and docs/report.schema.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      # Without src/ the tests can only import the installed wheel.
+      - run: rm -rf src
+      - run: pip install "$(ls dist/*.whl)[dev]"
+      - name: Wheel is installed with the tag's version
+        run: |
+          python -c "import waste_finder; print(waste_finder.__file__); assert 'site-packages' in waste_finder.__file__"
+          test "$(waste-finder --version)" = "waste-finder ${GITHUB_REF_NAME#v}"
+      - run: pytest -q -p no:cacheprovider
+      - run: waste-finder --demo --format md,html,json,csv,sarif --out-dir reports
+
+  github-release:
+    needs: test-wheel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and upload the files
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
+            --generate-notes --verify-tag $prerelease
+
+  pypi:
+    needs: test-wheel
+    # Prepared, off by default: set up a trusted publisher on PyPI, then set the repo variable PYPI_PUBLISH=true.
+    if: vars.PYPI_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/azure-waste-finder/
+    permissions:
+      id-token: write # OIDC token for PyPI trusted publishing, no API token stored
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

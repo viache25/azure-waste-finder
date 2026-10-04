@@ -8,11 +8,14 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
 from waste_finder.config import (
+    COST_SOURCES,
     IGNORE_TAG,
     ConfigError,
+    parse_cost_source,
     parse_currency,
     parse_downgrade_lookback,
     parse_fail_over,
@@ -24,6 +27,14 @@ from waste_finder.config import (
     split_below_threshold,
     split_free,
     split_ignored,
+)
+from waste_finder.costs import (
+    CostPeriod,
+    CostQuery,
+    apply_actual_costs,
+    collect_actual_costs,
+    cost_management_query,
+    last_days,
 )
 from waste_finder.export import EXPORTERS, FORMATS, RunInfo, render_summary
 from waste_finder.pricing import price_findings, retail_api_fetcher
@@ -61,6 +72,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     p.add_argument("--min-savings", type=float, metavar="AMOUNT", help="Leave out findings saving less per month")
     p.add_argument("--currency", metavar="CODE", help="Currency for Retail API prices (default EUR)")
+    p.add_argument(
+        "--cost-source",
+        metavar="SOURCE",
+        help=(
+            f"{' or '.join(COST_SOURCES)} (default retail): 'actual' uses the amortized cost of the last 30 days "
+            "from Cost Management (role Cost Management Reader), retail prices as fallback per finding"
+        ),
+    )
     p.add_argument(
         "--format",
         metavar="A,B",
@@ -106,6 +125,10 @@ def scope_from_args(args: argparse.Namespace) -> Scope | None:
     return Scope(subscriptions=tuple(subscriptions)) if subscriptions else None
 
 
+def _warn(message: str) -> None:
+    print(f"warning: {message}", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
@@ -117,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
                 "exclude": tuple(args.exclude) if args.exclude else None,
                 "min_monthly_savings": parse_min_savings(args.min_savings) if args.min_savings is not None else None,
                 "currency": parse_currency(args.currency) if args.currency else None,
+                "cost_source": parse_cost_source(args.cost_source) if args.cost_source is not None else None,
                 "formats": parse_formats(args.format.split(",")) if args.format is not None else None,
                 "fail_over": parse_fail_over(args.fail_over) if args.fail_over is not None else None,
                 "snapshot_min_age_days": (
@@ -131,13 +155,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USAGE
 
+    period: CostPeriod | None = last_days(date.today()) if settings.cost_source == "actual" else None
+    cost_query: CostQuery | None = None
     if args.demo:
-        from waste_finder.demo import demo_fetcher, demo_runner
+        from waste_finder.demo import demo_cost_query, demo_fetcher, demo_runner
 
         if settings.currency != "EUR":
             print(f"note: demo prices are in EUR, ignoring currency {settings.currency}", file=sys.stderr)
         currency = "EUR"
         scope_label, run_query, fetch = "demo (Contoso)", demo_runner(), demo_fetcher()
+        if period:
+            cost_query = demo_cost_query()
     else:
         scope = scope_from_args(args)
         if scope is None:
@@ -150,13 +178,26 @@ def main(argv: list[str] | None = None) -> int:
         currency = settings.currency
         scope_label, run_query = scope.label(), resource_graph_runner(scope)
         fetch = retail_api_fetcher(cache_file=Path(f".cache/prices-{currency.lower()}.json"), currency=currency)
+        if period:
+            cost_query = cost_management_query(period)
 
     findings, ignored = split_ignored(find_waste(run_query, settings.rules, settings.min_age_days), settings.exclude)
+    findings = price_findings(findings, fetch)
+    if cost_query and period:
+        # Actual costs replace retail prices where Cost Management has a row; everything else stays retail.
+        costs = collect_actual_costs(cost_query, (f.subscription_id for f in findings if f.subscription_id), warn=_warn)
+        applied = apply_actual_costs(findings, costs, currency, period)
+        if applied.other_currency:
+            print(
+                f"note: Cost Management reports {applied.other_currency} finding(s) in another currency than "
+                f"{currency}; they keep retail prices (set --currency to the billing currency)",
+                file=sys.stderr,
+            )
     # Free clean-up findings get their own section, outside the total and the savings threshold.
-    findings, cleanup = split_free(price_findings(findings, fetch))
+    findings, cleanup = split_free(findings)
     findings, below = split_below_threshold(findings, settings.min_monthly_savings)
 
-    run = RunInfo(scope_label, currency, args.demo, settings.min_monthly_savings)
+    run = RunInfo(scope_label, currency, args.demo, settings.min_monthly_savings, settings.cost_source, period)
     s = summarize(findings, ignored=len(ignored), below_threshold=len(below), cleanup=len(cleanup))
     args.out_dir.mkdir(parents=True, exist_ok=True)
     written = []
@@ -174,6 +215,8 @@ def main(argv: list[str] | None = None) -> int:
                 min_savings=settings.min_monthly_savings,
                 currency=currency,
                 cleanup=cleanup,
+                cost_source=settings.cost_source,
+                cost_period=period,
             )
         path = args.out_dir / f"report.{fmt}"
         path.write_text(text, encoding="utf-8")
@@ -183,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
             summary_file.write(render_summary(findings, s, run, settings.fail_over))
 
     print(f"{s.count} findings, ~{eur(s.monthly_eur, currency)} per month (~{eur(s.yearly_eur, currency)} per year)")
+    if period:
+        print(f"  {s.actual} priced from Cost Management ({period.start} to {period.end}), the rest from retail prices")
     if ignored:
         print(f"  {len(ignored)} ignored (tag {IGNORE_TAG}=true or exclude pattern)")
     if below:

@@ -110,6 +110,8 @@ def test_cli_values_override_file_values(config_file):
         ("[thresholds]\ndowngrade_lookback_days = -3", "downgrade_lookback_days must be"),
         ('[thresholds]\ndowngrade_lookback_days = "30"', "whole number of days"),
         ("rules = [", "cannot read"),
+        ('cost_source = "invoice"', "cost_source must be one of retail, actual"),
+        ("cost_source = 1", "cost_source must be one of"),
     ],
 )
 def test_invalid_config_is_rejected(config_file, text, message):
@@ -201,6 +203,7 @@ def test_demo_keeps_eur_prices(config_file, tmp_path, capsys):
         ["--fail-over", "-1"],
         ["--snapshot-min-age", "-1"],
         ["--downgrade-lookback", "-1"],
+        ["--cost-source", "budget"],
     ],
 )
 def test_cli_rejects_bad_settings(tmp_path, capsys, args):
@@ -275,3 +278,20 @@ def test_downgrade_lookback_from_config_and_flag(config_file):
 def test_split_free_keeps_unpriced_and_paid_findings():
     free, paid, unpriced = finding(cost=0.0), finding(cost=2.0), finding(cost=None)
     assert split_free([free, paid, unpriced]) == ([paid, unpriced], [free])
+
+
+def test_cost_source_from_file_and_flag(config_file, tmp_path, monkeypatch):
+    path = config_file('cost_source = " Actual "')
+    assert load_config(path) == {"cost_source": "actual"}
+    assert resolve_settings(path, {"cost_source": None}).cost_source == "actual"
+    assert resolve_settings(path, {"cost_source": "retail"}).cost_source == "retail"
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.chdir(empty)
+    assert resolve_settings(None, {}).cost_source == "retail"  # default
+
+
+def test_demo_reads_cost_source_from_config(config_file, tmp_path, capsys):
+    path = config_file('cost_source = "actual"\nformats = ["json"]')
+    assert main(["--demo", "--config", str(path), "--out-dir", str(tmp_path / "out")]) == 0
+    assert "10 priced from Cost Management" in capsys.readouterr().out

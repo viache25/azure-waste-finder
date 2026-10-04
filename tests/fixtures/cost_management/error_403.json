@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "RBACAccessDenied",
+    "message": "The client does not have authorization to perform action 'Microsoft.CostManagement/query/action' over scope '/subscriptions/22222222-2222-2222-2222-222222222222'."
+  }
+}

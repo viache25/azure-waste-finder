@@ -258,6 +258,10 @@ STRATEGIES: dict[str, PricingStrategy] = {
     "free": _free,
 }
 
+# Strategies whose savings are only part of the cost (D6). With actual costs, their savings keep the retail
+# ratio of savings to cost; without a retail result the savings are unknown and the finding stays unpriced.
+PARTIAL_SAVINGS_STRATEGIES = frozenset({"disk_downgrade"})
+
 
 def price_findings(findings: list[Finding], fetch: PriceFetcher) -> list[Finding]:
     for f in findings:
@@ -265,6 +269,7 @@ def price_findings(findings: list[Finding], fetch: PriceFetcher) -> list[Finding
         f.monthly_cost_eur = round(price.cost, 2) if price.cost is not None else None
         f.monthly_savings_eur = round(price.savings, 2) if price.savings is not None else None
         f.price_note = price.note
+        f.cost_source = "retail" if price.cost is not None else None
         if f.savings_eur == 0:
             # Saves nothing, e.g. a load balancer without rules (free) or a downgrade that is not cheaper.
             f.severity = "info"

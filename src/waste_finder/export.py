@@ -12,16 +12,19 @@ import io
 import json
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from waste_finder import __version__
 from waste_finder.models import Finding
 from waste_finder.registry import REGISTRY, SEVERITIES
 from waste_finder.report import Summary, cleanup_order, eur
 
+if TYPE_CHECKING:
+    from waste_finder.costs import CostPeriod
+
 FORMATS = ("md", "html", "json", "csv", "sarif")
 DEFAULT_FORMATS = ("md", "html")
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "1.4"
 
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 SARIF_LEVELS = {"high": "error", "medium": "warning", "low": "note", "info": "note"}
@@ -42,6 +45,7 @@ CSV_COLUMNS = (
     "monthly_cost",
     "monthly_savings",
     "currency",
+    "cost_source",
     "resource_id",
     "command",
 )
@@ -55,6 +59,8 @@ class RunInfo:
     currency: str = "EUR"
     demo: bool = False
     min_monthly_savings: float = 0.0
+    cost_source: str = "retail"  # requested source; each finding says which one it got
+    cost_period: CostPeriod | None = None  # Cost Management period when cost_source is "actual"
 
 
 def _ordered(findings: list[Finding]) -> list[Finding]:
@@ -81,6 +87,7 @@ def finding_dict(f: Finding) -> dict[str, Any]:
         "tags": f.tags,
         "monthly_cost": f.monthly_cost_eur,
         "monthly_savings": f.savings_eur,
+        "cost_source": f.cost_source,
         "price_note": f.price_note,
         "command": rule.remediation_command(f.resource_id),
         "docs_url": rule.docs_url,
@@ -95,6 +102,12 @@ def render_json(findings: list[Finding], summary: Summary, run: RunInfo, cleanup
         "scope": run.scope,
         "demo": run.demo,
         "currency": run.currency,
+        "cost_source": run.cost_source,
+        "cost_period": (
+            {"from": run.cost_period.start.isoformat(), "to": run.cost_period.end.isoformat()}
+            if run.cost_period
+            else None
+        ),
         "summary": {
             "count": summary.count,
             "monthly_savings": summary.monthly_eur,
@@ -104,6 +117,7 @@ def render_json(findings: list[Finding], summary: Summary, run: RunInfo, cleanup
             "below_threshold": summary.below_threshold,
             "min_monthly_savings": run.min_monthly_savings,
             "cleanup": summary.cleanup,
+            "actual_costs": summary.actual,
         },
         "findings": [finding_dict(f) for f in _ordered(findings)],
         "cleanup": [finding_dict(f) for f in cleanup_order(cleanup or [])],
@@ -171,6 +185,7 @@ def render_sarif(findings: list[Finding], summary: Summary, run: RunInfo, cleanu
                     "monthlyCost": f.monthly_cost_eur,
                     "monthlySavings": f.savings_eur,
                     "currency": run.currency,
+                    "costSource": f.cost_source,
                     "command": rule.remediation_command(f.resource_id),
                 },
             }
@@ -211,6 +226,12 @@ def render_summary(findings: list[Finding], summary: Summary, run: RunInfo, fail
         f"**{summary.count}** ungenutzte Ressource(n) im Bereich `{run.scope}`, "
         f"≈ {money(summary.yearly_eur)} pro Jahr.",
     ]
+    if run.cost_source == "actual":
+        lines += [
+            "",
+            f"Kostenquelle: {summary.actual} von {summary.count} Beträgen Ist-Kosten (Azure Cost Management, "
+            "amortisiert, letzte 30 Tage), die übrigen Listenpreise.",
+        ]
     if fail_over is not None:
         verdict = "überschritten" if summary.monthly_eur > fail_over else "eingehalten"
         lines += ["", f"Schwelle {money(fail_over)} pro Monat: **{verdict}**."]

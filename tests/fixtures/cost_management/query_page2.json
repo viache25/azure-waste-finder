@@ -1,0 +1,20 @@
+{
+  "id": "subscriptions/22222222-2222-2222-2222-222222222222/providers/Microsoft.CostManagement/query/7d2b9c1e-0c55-4f3a-9a51-3f1f6f0d2a10",
+  "name": "7d2b9c1e-0c55-4f3a-9a51-3f1f6f0d2a10",
+  "type": "Microsoft.CostManagement/query",
+  "location": null,
+  "sku": null,
+  "eTag": null,
+  "properties": {
+    "nextLink": null,
+    "columns": [
+      {"name": "Cost", "type": "Number"},
+      {"name": "ResourceId", "type": "String"},
+      {"name": "Currency", "type": "String"}
+    ],
+    "rows": [
+      [3.312, "/subscriptions/22222222-2222-2222-2222-222222222222/resourcegroups/rg-test/providers/microsoft.network/publicipaddresses/pip-old", "EUR"],
+      [0.0187, "/subscriptions/22222222-2222-2222-2222-222222222222/resourcegroups/rg-test/providers/microsoft.compute/disks/disk-old", "EUR"]
+    ]
+  }
+}

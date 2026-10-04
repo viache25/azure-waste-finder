@@ -1,0 +1,45 @@
+{
+  "_comment": "Cost Management Query API responses (amortized cost, last 30 days, grouped by ResourceId) for the two demo subscriptions, used by --demo --cost-source actual and the tests. Fictional amounts in the documented response format. Resources of the freshly deployed awf-waste-demo-rg have no cost data yet and fall back to retail prices; erp-app-01, web-shop and the row without a resource ID are not findings.",
+  "11111111-1111-1111-1111-111111111111": {
+    "id": "subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.CostManagement/query/demo-1111",
+    "name": "demo-1111",
+    "type": "Microsoft.CostManagement/query",
+    "location": null,
+    "sku": null,
+    "eTag": null,
+    "properties": {
+      "nextLink": null,
+      "columns": [{"name": "Cost", "type": "Number"}, {"name": "ResourceId", "type": "String"}, {"name": "Currency", "type": "String"}],
+      "rows": [
+        [139.82, "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/rg-test/providers/microsoft.compute/virtualmachines/build-agent-02", "EUR"],
+        [115.63, "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/rg-intranet/providers/microsoft.web/serverfarms/asp-intranet-legacy", "EUR"],
+        [66.65, "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/rg-legacy-erp/providers/microsoft.compute/disks/erp-db-old-data", "EUR"],
+        [66.65, "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/rg-sap-test/providers/microsoft.compute/disks/sap-test-db-data", "EUR"],
+        [28.51, "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/rg-network-old/providers/microsoft.network/natgateways/natgw-old-hub", "EUR"],
+        [6.12, "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/rg-legacy-erp/providers/microsoft.compute/snapshots/erp-db-before-migration", "EUR"],
+        [412.77, "/subscriptions/11111111-1111-1111-1111-111111111111/resourcegroups/rg-erp-prod/providers/microsoft.compute/virtualmachines/erp-app-01", "EUR"],
+        [18.4, "", "EUR"]
+      ]
+    }
+  },
+  "00000000-0000-0000-0000-000000000000": {
+    "id": "subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CostManagement/query/demo-0000",
+    "name": "demo-0000",
+    "type": "Microsoft.CostManagement/query",
+    "location": null,
+    "sku": null,
+    "eTag": null,
+    "properties": {
+      "nextLink": null,
+      "columns": [{"name": "Cost", "type": "Number"}, {"name": "ResourceId", "type": "String"}, {"name": "Currency", "type": "String"}],
+      "rows": [
+        [4.87, "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-web-old/providers/microsoft.compute/snapshots/web-os-before-upgrade", "EUR"],
+        [15.84, "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-web-old/providers/microsoft.network/loadbalancers/lb-web-old", "EUR"],
+        [3.31, "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-web-old/providers/microsoft.network/publicipaddresses/pip-old-gateway", "EUR"],
+        [3.31, "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-web-old/providers/microsoft.network/publicipaddresses/pip-dns-reserved", "EUR"],
+        [8.33, "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-web-old/providers/microsoft.compute/disks/web-old-vm-osdisk", "EUR"],
+        [96.12, "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-web-prod/providers/microsoft.web/sites/web-shop", "EUR"]
+      ]
+    }
+  }
+}

@@ -25,6 +25,17 @@
     "scope": { "description": "What was scanned, e.g. `subscription 1234…` or `all subscriptions`.", "type": "string" },
     "demo": { "description": "True for `--demo` runs on built-in fake data.", "type": "boolean" },
     "currency": { "description": "ISO 4217 code of all amounts.", "type": "string", "pattern": "^[A-Z]{3}$" },
+    "cost_source": { "description": "Requested cost source (`--cost-source`): `retail` = list prices, `actual` = Cost Management with retail as per-finding fallback. Each finding says which one it got. Since 1.4.", "enum": ["retail", "actual"] },
+    "cost_period": {
+      "description": "Days whose amortized cost Cost Management summed up (`cost_source` `actual`), else null. Since 1.4.",
+      "type": ["object", "null"],
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string", "format": "date" },
+        "to": { "description": "Inclusive.", "type": "string", "format": "date" }
+      }
+    },
     "summary": {
       "type": "object",
       "required": ["count", "monthly_savings", "yearly_savings", "unpriced", "ignored", "below_threshold", "min_monthly_savings"],
@@ -37,7 +48,8 @@
         "ignored": { "description": "Resources skipped by the ignore tag or an exclude pattern; not in `findings`.", "type": "integer", "minimum": 0 },
         "below_threshold": { "description": "Findings saving less than `min_monthly_savings`; not in `findings`.", "type": "integer", "minimum": 0 },
         "min_monthly_savings": { "type": "number", "minimum": 0 },
-        "cleanup": { "description": "Free clean-up findings (cost 0), listed in `cleanup`, not part of the total. Since 1.3.", "type": "integer", "minimum": 0 }
+        "cleanup": { "description": "Free clean-up findings (cost 0), listed in `cleanup`, not part of the total. Since 1.3.", "type": "integer", "minimum": 0 },
+        "actual_costs": { "description": "Findings priced from Cost Management (`cost_source` `actual`); the others use list prices. Since 1.4.", "type": "integer", "minimum": 0 }
       }
     },
     "findings": {
@@ -79,6 +91,7 @@
         "tags": { "type": "object", "additionalProperties": { "type": "string" } },
         "monthly_cost": { "description": "What the resource costs now; null if no price was found.", "$ref": "#/$defs/amount" },
         "monthly_savings": { "description": "What acting on the finding saves; equals `monthly_cost` unless the action is a downgrade.", "$ref": "#/$defs/amount" },
+        "cost_source": { "description": "Where `monthly_cost` comes from: `retail` (Retail Prices API list price), `actual` (Cost Management, amortized cost of `cost_period`), null if unpriced. Since 1.4.", "enum": ["retail", "actual", null] },
         "price_note": { "description": "How the price was derived, e.g. `0.0112 €/h × 730 h`.", "type": "string" },
         "command": { "description": "The `az` command that fixes it. The tool never runs it.", "type": "string" },
         "docs_url": { "type": "string" }

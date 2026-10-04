@@ -38,15 +38,15 @@
 <div class="demo"><strong>Demo-Daten:</strong> fiktive Subscriptions und Beispielpreise, keine echte Umgebung.</div>
   <div class="total">
     Sie verlieren ca.
-    <div class="big">457,33 € pro Monat</div>
-    ≈ 5.487,96 € pro Jahr durch 14 ungenutzte Ressourcen.
-<br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).  </div>
+    <div class="big">509,03 € pro Monat</div>
+    ≈ 6.108,36 € pro Jahr durch 16 ungenutzte Ressourcen.
+<br>Die Ressourcen kosten zusammen ca. 533,36 € pro Monat; eingespart wird weniger, weil verkleinerte Ressourcen weiter etwas kosten (Spalten „Kosten“ und „Einsparung“).<br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).  </div>
 
   <h2>Subscription <code>11111111-1111-1111-1111-111111111111</code></h2>
-  <p>Ca. <strong>395,69 € pro Monat</strong> durch 5 Ressource(n).</p>
+  <p>Ca. <strong>444,12 € pro Monat</strong> durch 6 Ressource(n).</p>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten €/Monat</th><th class="num">Einsparung €/Monat</th><th>Empfehlung</th></tr></thead>
     <tbody>
       <tr>
         <td><code>build-agent-02</code></td>
@@ -54,6 +54,7 @@
         <td><span class="sev sev-high">hoch</span></td>
         <td>rg-test</td>
         <td>Standard_D4s_v5</td>
+        <td class="num">148,19 €</td>
         <td class="num">148,19 €</td>
         <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.<br><code class="cmd">az vm deallocate --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/build-agent-02</code></td>
       </tr>
@@ -64,6 +65,7 @@
         <td>rg-intranet</td>
         <td>S1, 2 Instanz(en)</td>
         <td class="num">128,48 €</td>
+        <td class="num">128,48 €</td>
         <td>Plan löschen, wenn keine App mehr darauf soll; sonst auf den Free-Tarif (F1) oder eine kleinere Stufe skalieren.<br><code class="cmd">az appservice plan delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-intranet/providers/Microsoft.Web/serverfarms/asp-intranet-legacy</code></td>
       </tr>
       <tr>
@@ -73,7 +75,18 @@
         <td>rg-legacy-erp</td>
         <td>Premium_LRS (512 GB)</td>
         <td class="num">67,58 €</td>
+        <td class="num">67,58 €</td>
         <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/disks/erp-db-old-data</code></td>
+      </tr>
+      <tr>
+        <td><code>sap-test-db-data</code></td>
+        <td>Premium-Disk an deallozierter VM</td>
+        <td><span class="sev sev-medium">mittel</span></td>
+        <td>rg-sap-test</td>
+        <td>Premium_LRS (512 GB), 75 Tage dealloziert</td>
+        <td class="num">67,58 €</td>
+        <td class="num">48,43 €</td>
+        <td>Solange die VM dealloziert bleibt, die Disk auf Standard HDD umstellen (vor dem nächsten Start bei Bedarf zurück auf SSD); wird die VM nicht mehr gebraucht, VM und Disks löschen.<br><code class="cmd">az disk update --sku Standard_LRS --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-sap-test/providers/Microsoft.Compute/disks/sap-test-db-data</code></td>
       </tr>
       <tr>
         <td><code>natgw-old-hub</code></td>
@@ -81,6 +94,7 @@
         <td><span class="sev sev-medium">mittel</span></td>
         <td>rg-network-old</td>
         <td>Standard</td>
+        <td class="num">28,91 €</td>
         <td class="num">28,91 €</td>
         <td>NAT-Gateway löschen, wenn kein Subnetz es mehr braucht; danach die frei gewordenen öffentlichen IPs prüfen.<br><code class="cmd">az network nat gateway delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-network-old/providers/Microsoft.Network/natGateways/natgw-old-hub</code></td>
       </tr>
@@ -91,16 +105,17 @@
         <td>rg-legacy-erp</td>
         <td>Standard_LRS (512 GB), 324 Tage alt</td>
         <td class="num">22,53 €</td>
+        <td class="num">22,53 €</td>
         <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/snapshots/erp-db-before-migration</code></td>
       </tr>
     </tbody>
   </table>
   </div>
   <h2>Subscription <code>00000000-0000-0000-0000-000000000000</code></h2>
-  <p>Ca. <strong>61,64 € pro Monat</strong> durch 9 Ressource(n).</p>
+  <p>Ca. <strong>64,91 € pro Monat</strong> durch 10 Ressource(n).</p>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten €/Monat</th><th class="num">Einsparung €/Monat</th><th>Empfehlung</th></tr></thead>
     <tbody>
       <tr>
         <td><code>web-os-before-upgrade</code></td>
@@ -108,6 +123,7 @@
         <td><span class="sev sev-low">niedrig</span></td>
         <td>rg-web-old</td>
         <td>Premium_LRS (128 GB), 124 Tage alt</td>
+        <td class="num">16,33 €</td>
         <td class="num">16,33 €</td>
         <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/snapshots/web-os-before-upgrade</code></td>
       </tr>
@@ -118,6 +134,7 @@
         <td>rg-web-old</td>
         <td>Standard, 2 Regel(n)</td>
         <td class="num">16,06 €</td>
+        <td class="num">16,06 €</td>
         <td>Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder Backends zugeordnet sind.<br><code class="cmd">az network lb delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/loadBalancers/lb-web-old</code></td>
       </tr>
       <tr>
@@ -126,6 +143,7 @@
         <td><span class="sev sev-medium">mittel</span></td>
         <td>awf-waste-demo-rg</td>
         <td>B1, 1 Instanz(en)</td>
+        <td class="num">11,53 €</td>
         <td class="num">11,53 €</td>
         <td>Plan löschen, wenn keine App mehr darauf soll; sonst auf den Free-Tarif (F1) oder eine kleinere Stufe skalieren.<br><code class="cmd">az appservice plan delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Web/serverfarms/awf-empty-plan</code></td>
       </tr>
@@ -136,6 +154,7 @@
         <td>awf-waste-demo-rg</td>
         <td>Standard_B1s</td>
         <td class="num">8,18 €</td>
+        <td class="num">8,18 €</td>
         <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.<br><code class="cmd">az vm deallocate --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/virtualMachines/awf-stopped-vm</code></td>
       </tr>
       <tr>
@@ -144,6 +163,7 @@
         <td><span class="sev sev-low">niedrig</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard</td>
+        <td class="num">3,36 €</td>
         <td class="num">3,36 €</td>
         <td>Löschen, sofern die Adresse nicht bewusst reserviert bleiben muss.<br><code class="cmd">az network public-ip delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/publicIPAddresses/awf-orphaned-pip</code></td>
       </tr>
@@ -154,7 +174,18 @@
         <td>rg-web-old</td>
         <td>Standard</td>
         <td class="num">3,36 €</td>
+        <td class="num">3,36 €</td>
         <td>Löschen, sofern die Adresse nicht bewusst reserviert bleiben muss.<br><code class="cmd">az network public-ip delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/publicIPAddresses/pip-old-gateway</code></td>
+      </tr>
+      <tr>
+        <td><code>web-old-vm-osdisk</code></td>
+        <td>Premium-Disk an deallozierter VM</td>
+        <td><span class="sev sev-medium">mittel</span></td>
+        <td>rg-web-old</td>
+        <td>StandardSSD_LRS (128 GB), 40 Tage dealloziert</td>
+        <td class="num">8,45 €</td>
+        <td class="num">3,27 €</td>
+        <td>Solange die VM dealloziert bleibt, die Disk auf Standard HDD umstellen (vor dem nächsten Start bei Bedarf zurück auf SSD); wird die VM nicht mehr gebraucht, VM und Disks löschen.<br><code class="cmd">az disk update --sku Standard_LRS --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/disks/web-old-vm-osdisk</code></td>
       </tr>
       <tr>
         <td><code>awf-orphaned-disk</code></td>
@@ -162,6 +193,7 @@
         <td><span class="sev sev-medium">mittel</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard_LRS (32 GB)</td>
+        <td class="num">1,41 €</td>
         <td class="num">1,41 €</td>
         <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/disks/awf-orphaned-disk</code></td>
       </tr>
@@ -172,6 +204,7 @@
         <td>awf-waste-demo-rg</td>
         <td>Standard_LRS (32 GB), 45 Tage alt</td>
         <td class="num">1,41 €</td>
+        <td class="num">1,41 €</td>
         <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/snapshots/awf-old-snapshot</code></td>
       </tr>
       <tr>
@@ -180,6 +213,7 @@
         <td><span class="sev sev-info">info</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard, 0 Regel(n)</td>
+        <td class="num">0,00 €</td>
         <td class="num">0,00 €</td>
         <td>Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder Backends zugeordnet sind.<br><code class="cmd">az network lb delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/loadBalancers/awf-idle-lb</code></td>
       </tr>
@@ -196,6 +230,7 @@
     <li><strong>Leerer App-Service-Plan:</strong> Ein App-Service-Plan wird pro Instanz und Stunde verrechnet, auch wenn keine App darauf läuft. (<a href="https://learn.microsoft.com/azure/app-service/overview-hosting-plans">Doku</a>)</li>
     <li><strong>NAT-Gateway ohne Subnetz:</strong> Ein NAT-Gateway wird pro Stunde verrechnet, auch wenn kein Subnetz es nutzt und kein Datenverkehr fließt; die zugeordneten öffentlichen IPs kosten zusätzlich. (<a href="https://learn.microsoft.com/azure/nat-gateway/nat-overview">Doku</a>)</li>
     <li><strong>Load Balancer ohne Backend:</strong> Ein Standard Load Balancer wird pro Stunde für seine Lastenausgleichs- und Ausgangsregeln verrechnet, auch ohne Backend-Mitglieder. Ohne Regeln fällt keine Stundengebühr an; dann ist es nur ein Hinweis. (<a href="https://learn.microsoft.com/azure/load-balancer/load-balancer-overview">Doku</a>)</li>
+    <li><strong>Premium-Disk an deallozierter VM:</strong> Eine deallozierte VM kostet keine Rechenleistung, ihre Premium- und Standard-SSD-Disks werden aber weiter zum vollen Tarif verrechnet. Als Standard-HDD kostet dieselbe Größe deutlich weniger; eingespart wird die Differenz. (<a href="https://learn.microsoft.com/azure/virtual-machines/disks-convert-types">Doku</a>)</li>
   </ul>
 
   <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>

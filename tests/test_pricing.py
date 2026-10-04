@@ -191,3 +191,43 @@ def test_load_balancer_overage_needs_its_meter():
 def test_only_free_findings_become_info():
     [unpriced] = price_findings([make("stopped_vm", "Standard_Unknown", severity="high")], demo_fetcher())
     assert unpriced.severity == "high"
+
+
+def test_disk_price_ignores_the_disk_mount_meter():
+    # demo/prices.json lists 'E10 LRS Disk Mount' (1.04, per mount of a shared disk) before 'E10 LRS Disk'.
+    [f] = price_findings([make("unattached_disk", "StandardSSD_LRS", size_gb=128)], demo_fetcher())
+    assert f.monthly_cost_eur == 8.45
+
+
+@pytest.mark.parametrize(
+    ("sku", "size", "cost", "savings", "hdd"),
+    [
+        ("Premium_LRS", 512, 67.58, round(67.58 - 19.15, 2), "S20 LRS"),
+        ("StandardSSD_LRS", 128, 8.45, round(8.45 - 5.18, 2), "S10 LRS"),
+        ("Premium_LRS", 64, 9.88, round(9.88 - 2.65, 2), "S6 LRS"),
+    ],
+)
+def test_downgrade_savings_are_the_difference_to_standard_hdd(sku, size, cost, savings, hdd):
+    [f] = price_findings([make("premium_disk_deallocated_vm", sku, size_gb=size)], demo_fetcher())
+    assert (f.monthly_cost_eur, f.monthly_savings_eur, f.savings_eur) == (cost, savings, savings)
+    assert f"as Standard HDD ({hdd})" in f.price_note and f.severity == "medium"
+
+
+def test_downgrade_that_saves_nothing_is_info():
+    # A 4 GB Standard SSD (E1, 0.26) is cheaper than the smallest Standard HDD tier (S4, 1.41).
+    [f] = price_findings([make("premium_disk_deallocated_vm", "StandardSSD_LRS", size_gb=4)], demo_fetcher())
+    assert (f.monthly_cost_eur, f.monthly_savings_eur, f.severity) == (0.26, 0.0, "info")
+
+
+def test_downgrade_without_hdd_price_is_unpriced_not_full_cost():
+    def fetch(odata_filter):
+        return [] if "skuName eq 'S20 LRS'" in odata_filter else demo_fetcher()(odata_filter)
+
+    [f] = price_findings([make("premium_disk_deallocated_vm", "Premium_LRS", size_gb=512)], fetch)
+    assert f.monthly_cost_eur is None and f.savings_eur is None
+    assert "no price for S20 LRS to compare with" in f.price_note
+
+
+def test_downgrade_of_unpriced_disk():
+    [f] = price_findings([make("premium_disk_deallocated_vm", "Premium_LRS", size_gb=1000)], demo_fetcher())
+    assert f.monthly_cost_eur is None and "no price for P30 LRS" in f.price_note

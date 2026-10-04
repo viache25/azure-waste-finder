@@ -10,6 +10,10 @@
 ## Ergebnis
 
 Sie verlieren ca. **{{ summary.monthly_eur | eur }} pro Monat** (≈ {{ summary.yearly_eur | eur }} pro Jahr) durch **{{ summary.count }}** ungenutzte Ressourcen.
+{% if summary.monthly_cost_eur != summary.monthly_eur %}
+
+Die Ressourcen kosten zusammen ca. {{ summary.monthly_cost_eur | eur }} pro Monat; eingespart wird weniger, weil verkleinerte Ressourcen weiter etwas kosten (Spalten „Kosten“ und „Einsparung“).
+{% endif %}
 {% if summary.unpriced %}
 
 {{ summary.unpriced }} Ressource(n) konnten nicht bepreist werden und sind in der Summe nicht enthalten.
@@ -30,10 +34,10 @@ Sie verlieren ca. **{{ summary.monthly_eur | eur }} pro Monat** (≈ {{ summary.
 
 Ca. **{{ group.monthly_eur | eur }} pro Monat** durch {{ group.findings | length }} Ressource(n).
 
-| # | Ressource | Problem | Priorität | Ressourcengruppe | SKU | {{ currency_symbol }}/Monat | Empfehlung |
-|---|---|---|---|---|---|---:|---|
+| # | Ressource | Problem | Priorität | Ressourcengruppe | SKU | Kosten {{ currency_symbol }}/Monat | Einsparung {{ currency_symbol }}/Monat | Empfehlung |
+|---|---|---|---|---|---|---:|---:|---|
 {% for f in group.findings %}
-| {{ loop.index }} | `{{ f.name }}` | {{ rules[f.rule].title_de }} | {{ severities[f.severity] }} | {{ f.resource_group }} | {{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %}{% if f.age_days is not none %}, {{ f.age_days }} Tage alt{% endif %}{% if f.quantity is not none and rules[f.rule].quantity_unit_de %}, {{ f.quantity }} {{ rules[f.rule].quantity_unit_de }}{% endif %} | {{ f.monthly_cost_eur | eur }} | {{ rules[f.rule].action_de }} |
+| {{ loop.index }} | `{{ f.name }}` | {{ rules[f.rule].title_de }} | {{ severities[f.severity] }} | {{ f.resource_group }} | {{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %}{% if f.age_days is not none %}, {{ f.age_days }} {{ rules[f.rule].age_label_de }}{% endif %}{% if f.quantity is not none and rules[f.rule].quantity_unit_de %}, {{ f.quantity }} {{ rules[f.rule].quantity_unit_de }}{% endif %} | {{ f.monthly_cost_eur | eur }} | {{ f.savings_eur | eur }} | {{ rules[f.rule].action_de }} |
 {% endfor %}
 {% else %}
 

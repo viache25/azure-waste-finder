@@ -26,6 +26,7 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 | Empty App Service plan | medium | A plan on a paid tier (Basic and up) bills per instance and hour even without any app. Free/Shared plans and Consumption plans are not reported | `az appservice plan delete`, or scale it down to Free (F1) |
 | NAT gateway without subnet | medium | The gateway bills per hour (Retail API meter `Standard Gateway`) whether traffic flows or not; its public IPs bill on top | `az network nat gateway delete`, then check the freed public IPs |
 | Load balancer without backends | low, or info | A Standard load balancer with empty backend pools still bills per hour for its load-balancing and outbound rules (first 5 rules one meter, then per rule). Without rules there is no hourly charge, so the finding costs 0 and becomes `info` | `az network lb delete`, or remove the rules until backends return |
+| Premium disk on deallocated VM | medium | A deallocated VM bills no compute, but its Premium SSD / Standard SSD disks keep billing their tier. Reported when the VM has been deallocated for 30 days (`--downgrade-lookback`, from the disk's `LastOwnershipUpdateTime`). **Savings** = price difference to the Standard HDD tier of the same size, so the report shows cost and savings separately | `az disk update --sku Standard_LRS` while the VM stays deallocated, or delete VM and disks |
 
 A finding whose resource bills nothing (price 0) is always reported with severity `info`.
 
@@ -60,7 +61,7 @@ src/waste_finder/
   export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (187 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (208 tests), runs fully offline, coverage floor 95 %
 docs/report.schema.json   JSON Schema of report.json
 ```
 
@@ -69,7 +70,7 @@ Design choices:
 - **Resource Graph instead of listing resources per service**: one query language across all resource types and subscriptions, fast even for large tenants.
 - **Retail Prices API**: public, no login, returns EUR. These are list prices; real prices can be lower with EA/CSP discounts, reservations or Azure Hybrid Benefit. The report says so.
 - **Pluggable runners**: the rules and the pricing take a query/fetch function, so tests and `--demo` run without Azure.
-- **Cost vs. savings**: a finding carries what the resource costs now and, optionally, what acting on it saves (e.g. a downgrade). The report total is the sum of savings, which default to the full cost.
+- **Cost vs. savings**: a finding carries what the resource costs now and, optionally, what acting on it saves (e.g. a downgrade). The report total is the sum of savings, which default to the full cost; the tables show both columns, and the summary also gives the total cost when it differs.
 - **Monthly estimate** uses 730 hours, the same convention the Azure pricing calculator uses.
 
 ## Quick start (demo, no Azure needed)
@@ -133,6 +134,7 @@ waste-finder --rules stopped_vm,orphaned_public_ip            # only these rules
 waste-finder --exclude '*/resourceGroups/rg-sandbox/*'        # glob on the resource ID, repeatable
 waste-finder --min-savings 5                                  # leave out findings that save < 5 per month
 waste-finder --snapshot-min-age 90                            # report disk snapshots older than 90 days (default 30)
+waste-finder --downgrade-lookback 14                          # SSD disks of VMs deallocated for 14+ days (default 30)
 waste-finder --currency CHF                                   # Retail API currency (default EUR)
 waste-finder --config path/to/waste-finder.toml               # default: ./waste-finder.toml if present
 waste-finder --format md,html,json,csv,sarif                  # output formats (default md,html)
@@ -144,10 +146,11 @@ waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 abov
 | `--subscription ID` | Subscription to scan; repeat for several. Default `$AZURE_SUBSCRIPTION_ID` |
 | `--all-subscriptions` | Every subscription the credential can read (Resource Graph at tenant scope) |
 | `--management-group ID` | All subscriptions below this management group |
-| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`, `empty_app_service_plan`, `idle_nat_gateway`, `idle_load_balancer`) |
+| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`, `empty_app_service_plan`, `idle_nat_gateway`, `idle_load_balancer`, `premium_disk_deallocated_vm`) |
 | `--exclude PATTERN` | Ignore resources whose ID matches the glob (case-insensitive); repeatable |
 | `--min-savings AMOUNT` | Leave out findings that save less per month; unpriced findings stay in |
 | `--snapshot-min-age DAYS` | `old_snapshot` reports snapshots at least this many days old (default 30; age from the snapshot's creation time) |
+| `--downgrade-lookback DAYS` | `premium_disk_deallocated_vm` reports SSD disks whose VM has been deallocated for at least this many days (default 30) |
 | `--currency CODE` | Currency for list prices, e.g. `EUR`, `CHF`, `USD` (`--demo` always uses its EUR sample prices) |
 | `--format A,B` | Output formats: `md`, `html`, `json`, `csv`, `sarif` (default `md,html`); written as `report.<format>` |
 | `--fail-over AMOUNT` | Exit with code 3 when the monthly waste is above this amount (reports are still written) |
@@ -172,6 +175,7 @@ formats = ["md", "html", "json"]   # default: md, html
 min_monthly_savings = 1.0
 fail_over = 100.0                  # exit code 3 when the monthly total is higher
 snapshot_min_age_days = 30         # old_snapshot: only snapshots at least this many days old
+downgrade_lookback_days = 30       # premium_disk_deallocated_vm: VM deallocated at least this long
 ```
 
 ## Output formats and exit codes
@@ -232,7 +236,7 @@ Dependabot opens weekly PRs for pip, GitHub Actions and Terraform providers: min
 
 ## Roadmap
 
-The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (downgrade candidates, free clean-up findings), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
+The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (free clean-up findings), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
 
 ## License
 

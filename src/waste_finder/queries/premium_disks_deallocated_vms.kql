@@ -1,0 +1,16 @@
+// Premium SSD / Standard SSD disks attached to a deallocated VM (diskState 'Reserved'). The VM bills no compute,
+// but its disks keep billing their full tier. LastOwnershipUpdateTime is when the disk state last changed (here:
+// when the VM was deallocated), so ageDays = days deallocated; rules.py keeps disks deallocated for the whole
+// lookback (downgrade_lookback_days).
+Resources
+| where type =~ 'microsoft.compute/disks'
+| where tostring(properties.diskState) =~ 'Reserved'
+| extend sku = tostring(sku.name)
+| where sku in~ ('Premium_LRS', 'Premium_ZRS', 'StandardSSD_LRS', 'StandardSSD_ZRS')
+| extend since = todatetime(properties.LastOwnershipUpdateTime)
+| project id, name, resourceGroup, location, sku,
+          sizeGb = toint(properties.diskSizeGB),
+          vmId = tostring(managedBy),
+          since,
+          ageDays = toint((now() - since) / 1d),
+          tags

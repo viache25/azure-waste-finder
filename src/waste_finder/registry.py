@@ -29,6 +29,7 @@ class Rule:
     command: str  # az command for the remediation; {id} is replaced by the resource ID
     docs_url: str
     quantity_unit_de: str = ""  # label for Finding.quantity in the report, e.g. "Instanz(en)"; empty = not shown
+    age_label_de: str = "Tage alt"  # label for Finding.age_days in the report
 
     def remediation_command(self, resource_id: str) -> str:
         return self.command.format(id=resource_id)
@@ -147,6 +148,26 @@ REGISTRY: dict[str, Rule] = {
             command="az network lb delete --ids {id}",
             docs_url="https://learn.microsoft.com/azure/load-balancer/load-balancer-overview",
             quantity_unit_de="Regel(n)",
+        ),
+        Rule(
+            id="premium_disk_deallocated_vm",
+            title_de="Premium-Disk an deallozierter VM",
+            title_en="Premium disk on deallocated VM",
+            severity="medium",
+            query_file="premium_disks_deallocated_vms.kql",
+            pricing="disk_downgrade",
+            why_de=(
+                "Eine deallozierte VM kostet keine Rechenleistung, ihre Premium- und Standard-SSD-Disks werden aber "
+                "weiter zum vollen Tarif verrechnet. Als Standard-HDD kostet dieselbe Größe deutlich weniger; "
+                "eingespart wird die Differenz."
+            ),
+            action_de=(
+                "Solange die VM dealloziert bleibt, die Disk auf Standard HDD umstellen (vor dem nächsten Start bei "
+                "Bedarf zurück auf SSD); wird die VM nicht mehr gebraucht, VM und Disks löschen."
+            ),
+            command="az disk update --sku Standard_LRS --ids {id}",
+            docs_url="https://learn.microsoft.com/azure/virtual-machines/disks-convert-types",
+            age_label_de="Tage dealloziert",
         ),
     )
 }

@@ -11,6 +11,7 @@ Example file:
     min_monthly_savings = 1.0                        # leave out findings that save less per month
     fail_over = 100                                  # exit code 3 when the monthly total is higher
     snapshot_min_age_days = 30                       # old_snapshot: report snapshots at least this old
+    downgrade_lookback_days = 30                     # premium_disk_deallocated_vm: VM deallocated this long
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ CURRENCIES = frozenset(
 )
 
 TOP_LEVEL_KEYS = {"rules", "exclude", "currency", "formats", "thresholds"}
-THRESHOLD_KEYS = {"min_monthly_savings", "fail_over", "snapshot_min_age_days"}
+THRESHOLD_KEYS = {"min_monthly_savings", "fail_over", "snapshot_min_age_days", "downgrade_lookback_days"}
 
 
 class ConfigError(ValueError):
@@ -53,12 +54,16 @@ class Settings:
     formats: tuple[str, ...] = DEFAULT_FORMATS
     fail_over: float | None = None  # exit code 3 when the monthly total is above this
     snapshot_min_age_days: int = 30  # old_snapshot reports snapshots at least this many days old
+    downgrade_lookback_days: int = 30  # premium_disk_deallocated_vm: VM deallocated for at least this many days
     source: str = field(default="defaults", compare=False)  # where the file values came from, for messages
 
     @property
     def min_age_days(self) -> dict[str, int]:
         """Rule id -> minimum age in days for the age-based rules (rules.find_waste)."""
-        return {"old_snapshot": self.snapshot_min_age_days}
+        return {
+            "old_snapshot": self.snapshot_min_age_days,
+            "premium_disk_deallocated_vm": self.downgrade_lookback_days,
+        }
 
 
 def parse_rules(value: Iterable[str]) -> tuple[str, ...]:
@@ -112,6 +117,10 @@ def parse_snapshot_min_age(value: Any) -> int:
     return parse_days(value, "snapshot_min_age_days")
 
 
+def parse_downgrade_lookback(value: Any) -> int:
+    return parse_days(value, "downgrade_lookback_days")
+
+
 def _string_list(data: Mapping[str, Any], key: str) -> list[str]:
     value = data[key]
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
@@ -151,6 +160,8 @@ def load_config(path: Path) -> dict[str, Any]:
             values["fail_over"] = parse_fail_over(thresholds["fail_over"])
         if "snapshot_min_age_days" in thresholds:
             values["snapshot_min_age_days"] = parse_snapshot_min_age(thresholds["snapshot_min_age_days"])
+        if "downgrade_lookback_days" in thresholds:
+            values["downgrade_lookback_days"] = parse_downgrade_lookback(thresholds["downgrade_lookback_days"])
     return values
 
 

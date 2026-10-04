@@ -28,6 +28,7 @@ def test_find_waste_maps_rows_to_findings():
         "empty_app_service_plan": 2,
         "idle_nat_gateway": 1,
         "idle_load_balancer": 2,
+        "premium_disk_deallocated_vm": 3,  # no lookback given: all
     }
 
     disk = next(f for f in by_rule["unattached_disk"] if f.name == "awf-orphaned-disk")
@@ -107,3 +108,11 @@ def test_idle_network_queries():
     assert "loadBalancingRules" in lb and "outboundRules" in lb and "quantity = rules" in lb
     lbs = {f.name: f for f in find_waste(demo_runner(), ["idle_load_balancer"])}
     assert (lbs["lb-web-old"].quantity, lbs["awf-idle-lb"].quantity) == (2, 0)
+
+
+def test_premium_disk_query_uses_reserved_state_and_ownership_time():
+    q = load_query("premium_disk_deallocated_vm")
+    assert "'Reserved'" in q and "LastOwnershipUpdateTime" in q and "ageDays" in q
+    assert "'Premium_LRS'" in q and "'StandardSSD_LRS'" in q and "PremiumV2" not in q
+    findings = find_waste(demo_runner(), ["premium_disk_deallocated_vm"], {"premium_disk_deallocated_vm": 30})
+    assert sorted(f.name for f in findings) == ["sap-test-db-data", "web-old-vm-osdisk"]

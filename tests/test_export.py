@@ -62,8 +62,8 @@ def test_demo_json_matches_schema(demo_reports):
     jsonschema.validate(data, SCHEMA, format_checker=jsonschema.FormatChecker())
     assert data["schema_version"] == SCHEMA_VERSION
     assert data["demo"] is True and data["currency"] == "EUR"
-    assert data["summary"]["monthly_savings"] == 457.33 and data["summary"]["ignored"] == 1
-    assert len(data["findings"]) == data["summary"]["count"] == 14
+    assert data["summary"]["monthly_savings"] == 509.03 and data["summary"]["ignored"] == 1
+    assert len(data["findings"]) == data["summary"]["count"] == 16
     savings = [f["monthly_savings"] for f in data["findings"]]
     assert savings == sorted(savings, reverse=True)
 
@@ -105,7 +105,7 @@ def test_sarif_structure(demo_reports):
     rules = run["tool"]["driver"]["rules"]
     assert [r["id"] for r in rules] == list(REGISTRY)
     assert all(r["helpUri"].startswith("https://learn.microsoft.com/") for r in rules)
-    assert len(run["results"]) == 14
+    assert len(run["results"]) == 16
     for result in run["results"]:
         assert rules[result["ruleIndex"]]["id"] == result["ruleId"]
         location = result["locations"][0]
@@ -148,10 +148,10 @@ def test_summary_without_findings_or_threshold():
 def test_summary_is_appended(tmp_path):
     summary = tmp_path / "step-summary.md"
     summary.write_text("# Earlier step\n", encoding="utf-8")
-    args = ["--demo", "--out-dir", str(tmp_path / "out"), "--summary", str(summary), "--fail-over", "500"]
+    args = ["--demo", "--out-dir", str(tmp_path / "out"), "--summary", str(summary), "--fail-over", "600"]
     assert main(args) == 0
     text = summary.read_text(encoding="utf-8")
-    assert text.startswith("# Earlier step\n### Azure Kostencheck: ca. 457,33 €")
+    assert text.startswith("# Earlier step\n### Azure Kostencheck: ca. 509,03 €")
     assert "**eingehalten**" in text
 
 
@@ -161,7 +161,7 @@ def test_empty_summary_path_is_skipped(tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["out"]
 
 
-@pytest.mark.parametrize(("fail_over", "code"), [("457.33", 0), ("457", EXIT_OVER_THRESHOLD), ("0", 3)])
+@pytest.mark.parametrize(("fail_over", "code"), [("509.03", 0), ("509", EXIT_OVER_THRESHOLD), ("0", 3)])
 def test_fail_over_exit_code(tmp_path, capsys, fail_over, code):
     assert main(["--demo", "--out-dir", str(tmp_path), "--fail-over", fail_over]) == code
     assert ("above --fail-over" in capsys.readouterr().err) == (code == 3)

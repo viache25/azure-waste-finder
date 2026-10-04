@@ -14,6 +14,7 @@ from waste_finder.config import (
     IGNORE_TAG,
     ConfigError,
     parse_currency,
+    parse_downgrade_lookback,
     parse_fail_over,
     parse_formats,
     parse_min_savings,
@@ -77,6 +78,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Report disk snapshots at least this many days old (default 30)",
     )
     p.add_argument(
+        "--downgrade-lookback",
+        type=int,
+        metavar="DAYS",
+        help="Report SSD disks of VMs deallocated for at least this many days (default 30)",
+    )
+    p.add_argument(
         "--summary",
         metavar="FILE",
         help="Append a Markdown summary, e.g. $GITHUB_STEP_SUMMARY (empty value: no summary)",
@@ -113,6 +120,9 @@ def main(argv: list[str] | None = None) -> int:
                 "fail_over": parse_fail_over(args.fail_over) if args.fail_over is not None else None,
                 "snapshot_min_age_days": (
                     parse_snapshot_min_age(args.snapshot_min_age) if args.snapshot_min_age is not None else None
+                ),
+                "downgrade_lookback_days": (
+                    parse_downgrade_lookback(args.downgrade_lookback) if args.downgrade_lookback is not None else None
                 ),
             },
         )

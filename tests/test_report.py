@@ -27,7 +27,7 @@ def test_demo_run_writes_both_reports(tmp_path, capsys):
     md = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "pro Monat" in md and "Demo-Daten" in md
     assert (tmp_path / "report.html").exists()
-    assert "14 findings" in capsys.readouterr().out
+    assert "16 findings" in capsys.readouterr().out
 
 
 def test_real_run_needs_subscription(monkeypatch):
@@ -59,3 +59,22 @@ def test_report_shows_severity_docs_and_command(tmp_path):
         assert "Priorität" in text and "hoch" in text
         assert "az vm deallocate --ids /subscriptions/" in text
         assert "https://learn.microsoft.com/azure/virtual-machines/states-billing" in text
+
+
+def test_report_shows_cost_and_savings_separately(tmp_path):
+    assert main(["--demo", "--out-dir", str(tmp_path)]) == 0
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "| Kosten €/Monat | Einsparung €/Monat |" in md
+    assert "| Premium_LRS (512 GB), 75 Tage dealloziert | 67,58 € | 48,43 € |" in md
+    assert "Die Ressourcen kosten zusammen ca. 533,36 € pro Monat" in md
+    html = (tmp_path / "report.html").read_text(encoding="utf-8")
+    assert "Einsparung €/Monat" in html and '<td class="num">48,43 €</td>' in html
+
+
+def test_cost_note_only_when_cost_and_savings_differ():
+    f = Finding("stopped_vm", "a", "a", "rg", "we", "x", monthly_cost_eur=10.0)
+    assert "kosten zusammen" not in render([f], "sub", "md")
+    s = summarize(
+        [f, Finding("unattached_disk", "b", "b", "rg", "we", "x", monthly_cost_eur=50.0, monthly_savings_eur=20.0)]
+    )
+    assert (s.monthly_cost_eur, s.monthly_eur) == (60.0, 30.0)

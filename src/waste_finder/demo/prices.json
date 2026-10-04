@@ -25,6 +25,14 @@
     {"serviceName": "Load Balancer", "priceType": "Consumption", "armRegionName": "Global", "productName": "Load Balancer", "skuName": "Standard", "meterName": "Standard Included LB Rules and Outbound Rules", "unitOfMeasure": "1 Hour", "retailPrice": 0.022},
     {"serviceName": "Load Balancer", "priceType": "Consumption", "armRegionName": "Global", "productName": "Load Balancer", "skuName": "Standard", "meterName": "Standard Included LB Rules and Outbound Rules - Free", "unitOfMeasure": "1 Hour", "retailPrice": 0.0},
     {"serviceName": "Load Balancer", "priceType": "Consumption", "armRegionName": "Global", "productName": "Load Balancer", "skuName": "Standard", "meterName": "Standard Overage LB Rules and Outbound Rules", "unitOfMeasure": "1/Hour", "retailPrice": 0.0088},
-    {"serviceName": "Load Balancer", "priceType": "Consumption", "armRegionName": "Global", "productName": "Load Balancer", "skuName": "Standard", "meterName": "Standard Data Processed", "unitOfMeasure": "1 GB", "retailPrice": 0.0044}
+    {"serviceName": "Load Balancer", "priceType": "Consumption", "armRegionName": "Global", "productName": "Load Balancer", "skuName": "Standard", "meterName": "Standard Data Processed", "unitOfMeasure": "1 GB", "retailPrice": 0.0044},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "S6 LRS", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "meterName": "S6 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 2.65},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "S10 LRS", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "meterName": "S10 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 5.18},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "S20 LRS", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "meterName": "S20 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 19.15},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "E10 LRS", "armRegionName": "westeurope", "productName": "Standard SSD Managed Disks", "meterName": "E10 LRS Disk Mount", "unitOfMeasure": "1/Month", "retailPrice": 1.04},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "E10 LRS", "armRegionName": "westeurope", "productName": "Standard SSD Managed Disks", "meterName": "E10 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 8.45},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "E1 LRS", "armRegionName": "westeurope", "productName": "Standard SSD Managed Disks", "meterName": "E1 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 0.26},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "P6 LRS", "armRegionName": "westeurope", "productName": "Premium SSD Managed Disks", "meterName": "P6 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 9.88},
+    {"serviceName": "Storage", "priceType": "Consumption", "skuName": "P20 LRS", "armRegionName": "westeurope", "productName": "Premium SSD Managed Disks", "meterName": "P20 LRS Disk Mount", "unitOfMeasure": "1/Month", "retailPrice": 3.76}
   ]
 }

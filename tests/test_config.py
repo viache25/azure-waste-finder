@@ -1,5 +1,7 @@
 """waste-finder.toml, CLI precedence, rule selection, exclusions and thresholds."""
 
+import json
+
 import pytest
 
 from waste_finder.cli import main
@@ -24,6 +26,7 @@ currency = "chf"
 [thresholds]
 min_monthly_savings = 5
 snapshot_min_age_days = 90
+downgrade_lookback_days = 14
 """
 
 
@@ -45,8 +48,13 @@ def test_defaults_without_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     s = resolve_settings(None, {})
     assert s == Settings(rules=tuple(REGISTRY), exclude=(), min_monthly_savings=0.0, currency="EUR")
-    assert (s.formats, s.fail_over, s.snapshot_min_age_days) == (("md", "html"), None, 30)
-    assert s.min_age_days == {"old_snapshot": 30}
+    assert (s.formats, s.fail_over, s.snapshot_min_age_days, s.downgrade_lookback_days) == (
+        ("md", "html"),
+        None,
+        30,
+        30,
+    )
+    assert s.min_age_days == {"old_snapshot": 30, "premium_disk_deallocated_vm": 30}
     assert s.source == "defaults"
 
 
@@ -57,6 +65,7 @@ def test_load_full_config(config_file):
         "currency": "CHF",
         "min_monthly_savings": 5.0,
         "snapshot_min_age_days": 90,
+        "downgrade_lookback_days": 14,
     }
 
 
@@ -97,6 +106,8 @@ def test_cli_values_override_file_values(config_file):
         ("[thresholds]\nsnapshot_min_age_days = -1", "snapshot_min_age_days must be"),
         ("[thresholds]\nsnapshot_min_age_days = 7.5", "whole number of days"),
         ("[thresholds]\nsnapshot_min_age_days = true", "whole number of days"),
+        ("[thresholds]\ndowngrade_lookback_days = -3", "downgrade_lookback_days must be"),
+        ('[thresholds]\ndowngrade_lookback_days = "30"', "whole number of days"),
         ("rules = [", "cannot read"),
     ],
 )
@@ -188,6 +199,7 @@ def test_demo_keeps_eur_prices(config_file, tmp_path, capsys):
         ["--format", "md,pdf"],
         ["--fail-over", "-1"],
         ["--snapshot-min-age", "-1"],
+        ["--downgrade-lookback", "-1"],
     ],
 )
 def test_cli_rejects_bad_settings(tmp_path, capsys, args):
@@ -214,7 +226,7 @@ def test_snapshot_min_age_flag_overrides_file(config_file):
     path = config_file("[thresholds]\nsnapshot_min_age_days = 90")
     assert resolve_settings(path, {"snapshot_min_age_days": None}).snapshot_min_age_days == 90
     s = resolve_settings(path, {"snapshot_min_age_days": 0})
-    assert s.snapshot_min_age_days == 0 and s.min_age_days == {"old_snapshot": 0}
+    assert s.snapshot_min_age_days == 0 and s.min_age_days["old_snapshot"] == 0
 
 
 @pytest.mark.parametrize(
@@ -236,3 +248,24 @@ def test_cli_snapshot_min_age_from_config(config_file, tmp_path, capsys):
     path = config_file('rules = ["old_snapshot"]\n[thresholds]\nsnapshot_min_age_days = 0')
     assert main(["--demo", "--config", str(path), "--out-dir", str(tmp_path / "out")]) == 0
     assert "4 findings" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("flags", "names"),
+    [
+        ([], ["sap-test-db-data", "web-old-vm-osdisk"]),  # jumpbox-osdisk: deallocated 3 days, under 30
+        (["--downgrade-lookback", "0"], ["jumpbox-osdisk", "sap-test-db-data", "web-old-vm-osdisk"]),
+        (["--downgrade-lookback", "60"], ["sap-test-db-data"]),
+    ],
+)
+def test_cli_downgrade_lookback(tmp_path, flags, names):
+    args = ["--demo", "--rules", "premium_disk_deallocated_vm", "--format", "json", "--out-dir", str(tmp_path)]
+    assert main([*args, *flags]) == 0
+    data = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert sorted(f["name"] for f in data["findings"]) == names
+
+
+def test_downgrade_lookback_from_config_and_flag(config_file):
+    path = config_file("[thresholds]\ndowngrade_lookback_days = 90")
+    assert resolve_settings(path, {}).min_age_days["premium_disk_deallocated_vm"] == 90
+    assert resolve_settings(path, {"downgrade_lookback_days": 7}).downgrade_lookback_days == 7

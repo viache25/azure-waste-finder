@@ -18,6 +18,7 @@ class Summary:
     monthly_eur: float  # sum of savings (D6), not of current cost
     yearly_eur: float
     unpriced: int
+    monthly_cost_eur: float = 0.0  # what the resources cost now; more than monthly_eur when some are downgrades
     ignored: int = 0  # tagged waste-finder:ignore=true or matched an exclude pattern
     below_threshold: int = 0  # saves less than min_monthly_savings
 
@@ -38,6 +39,7 @@ def summarize(findings: list[Finding], ignored: int = 0, below_threshold: int = 
         monthly_eur=round(monthly, 2),
         yearly_eur=round(monthly * 12, 2),
         unpriced=sum(1 for f in findings if f.savings_eur is None),
+        monthly_cost_eur=round(sum(f.monthly_cost_eur or 0 for f in findings), 2),
         ignored=ignored,
         below_threshold=below_threshold,
     )

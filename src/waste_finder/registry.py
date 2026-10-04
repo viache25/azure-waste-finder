@@ -28,6 +28,7 @@ class Rule:
     action_de: str  # what to do (German, for the report)
     command: str  # az command for the remediation; {id} is replaced by the resource ID
     docs_url: str
+    quantity_unit_de: str = ""  # label for Finding.quantity in the report, e.g. "Instanz(en)"; empty = not shown
 
     def remediation_command(self, resource_id: str) -> str:
         return self.command.format(id=resource_id)
@@ -92,6 +93,22 @@ REGISTRY: dict[str, Rule] = {
             ),
             command="az snapshot delete --ids {id}",
             docs_url="https://learn.microsoft.com/azure/virtual-machines/disks-understand-billing",
+        ),
+        Rule(
+            id="empty_app_service_plan",
+            title_de="Leerer App-Service-Plan",
+            title_en="Empty App Service plan",
+            severity="medium",
+            query_file="empty_app_service_plans.kql",
+            pricing="app_service_plan",
+            why_de=("Ein App-Service-Plan wird pro Instanz und Stunde verrechnet, auch wenn keine App darauf läuft."),
+            action_de=(
+                "Plan löschen, wenn keine App mehr darauf soll; sonst auf den Free-Tarif (F1) oder eine kleinere "
+                "Stufe skalieren."
+            ),
+            command="az appservice plan delete --ids {id}",
+            docs_url="https://learn.microsoft.com/azure/app-service/overview-hosting-plans",
+            quantity_unit_de="Instanz(en)",
         ),
     )
 }

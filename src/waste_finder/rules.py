@@ -32,6 +32,7 @@ def row_to_finding(rule: str, row: Row) -> Finding:
         size_gb=row.get("sizeGb"),
         os_type=row.get("osType"),
         age_days=row.get("ageDays"),
+        quantity=row.get("quantity"),
         tags=row.get("tags") or {},
         severity=REGISTRY[rule].severity,
     )

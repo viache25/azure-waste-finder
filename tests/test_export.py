@@ -20,7 +20,7 @@ from waste_finder.export import (
 )
 from waste_finder.models import Finding
 from waste_finder.registry import REGISTRY
-from waste_finder.report import summarize
+from waste_finder.report import render, summarize
 
 SCHEMA = json.loads((Path(__file__).parent.parent / "docs" / "report.schema.json").read_text(encoding="utf-8"))
 SUB = "/subscriptions/s1/resourceGroups/rg/providers/Microsoft.Compute"
@@ -62,8 +62,8 @@ def test_demo_json_matches_schema(demo_reports):
     jsonschema.validate(data, SCHEMA, format_checker=jsonschema.FormatChecker())
     assert data["schema_version"] == SCHEMA_VERSION
     assert data["demo"] is True and data["currency"] == "EUR"
-    assert data["summary"]["monthly_savings"] == 272.35 and data["summary"]["ignored"] == 1
-    assert len(data["findings"]) == data["summary"]["count"] == 9
+    assert data["summary"]["monthly_savings"] == 412.36 and data["summary"]["ignored"] == 1
+    assert len(data["findings"]) == data["summary"]["count"] == 11
     savings = [f["monthly_savings"] for f in data["findings"]]
     assert savings == sorted(savings, reverse=True)
 
@@ -105,7 +105,7 @@ def test_sarif_structure(demo_reports):
     rules = run["tool"]["driver"]["rules"]
     assert [r["id"] for r in rules] == list(REGISTRY)
     assert all(r["helpUri"].startswith("https://learn.microsoft.com/") for r in rules)
-    assert len(run["results"]) == 9
+    assert len(run["results"]) == 11
     for result in run["results"]:
         assert rules[result["ruleIndex"]]["id"] == result["ruleId"]
         location = result["locations"][0]
@@ -151,7 +151,7 @@ def test_summary_is_appended(tmp_path):
     args = ["--demo", "--out-dir", str(tmp_path / "out"), "--summary", str(summary), "--fail-over", "500"]
     assert main(args) == 0
     text = summary.read_text(encoding="utf-8")
-    assert text.startswith("# Earlier step\n### Azure Kostencheck: ca. 272,35 €")
+    assert text.startswith("# Earlier step\n### Azure Kostencheck: ca. 412,36 €")
     assert "**eingehalten**" in text
 
 
@@ -161,7 +161,7 @@ def test_empty_summary_path_is_skipped(tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["out"]
 
 
-@pytest.mark.parametrize(("fail_over", "code"), [("272.35", 0), ("272", EXIT_OVER_THRESHOLD), ("0", 3)])
+@pytest.mark.parametrize(("fail_over", "code"), [("412.36", 0), ("412", EXIT_OVER_THRESHOLD), ("0", 3)])
 def test_fail_over_exit_code(tmp_path, capsys, fail_over, code):
     assert main(["--demo", "--out-dir", str(tmp_path), "--fail-over", fail_over]) == code
     assert ("above --fail-over" in capsys.readouterr().err) == (code == 3)
@@ -192,5 +192,20 @@ def test_schema_still_accepts_1_0_reports_without_age():
     data = json.loads(render_json(findings(), summarize(findings()), RunInfo("x")))
     data["schema_version"] = "1.0"
     for f in data["findings"]:
-        del f["age_days"]
+        del f["age_days"], f["quantity"]
     jsonschema.validate(data, SCHEMA)
+
+
+def test_plan_instances_in_json_csv_and_report(demo_reports):
+    data = json.loads((demo_reports / "report.json").read_text(encoding="utf-8"))
+    by_name = {f["name"]: f for f in data["findings"]}
+    assert by_name["asp-intranet-legacy"]["quantity"] == 2 and by_name["awf-stopped-vm"]["quantity"] is None
+    rows = {r["name"]: r for r in csv.DictReader(io.StringIO((demo_reports / "report.csv").read_text("utf-8")))}
+    assert rows["asp-intranet-legacy"]["quantity"] == "2" and rows["erp-db-old-data"]["quantity"] == ""
+    for fmt in ("md", "html"):
+        assert "S1, 2 Instanz(en)" in (demo_reports / f"report.{fmt}").read_text(encoding="utf-8")
+
+
+def test_quantity_needs_a_unit_to_be_shown():
+    f = Finding("stopped_vm", f"{SUB}/virtualMachines/vm1", "vm1", "rg", "we", "B1s", quantity=3, monthly_cost_eur=1)
+    assert "B1s, 3" not in render([f], "x", "md")

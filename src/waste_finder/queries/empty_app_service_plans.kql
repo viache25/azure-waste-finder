@@ -1,0 +1,13 @@
+// App Service plans without any app on a paid tier. A plan bills per instance and hour, apps or not.
+// Free and Shared plans cost nothing when empty; Consumption (Dynamic) and Flex Consumption bill per execution.
+Resources
+| where type =~ 'microsoft.web/serverfarms'
+| where toint(properties.numberOfSites) == 0
+| extend tier = tostring(sku.tier)
+| where tier !in~ ('Free', 'Shared', 'Dynamic', 'FlexConsumption')
+| project id, name, resourceGroup, location,
+          sku = tostring(sku.name),
+          tier,
+          osType = iff(tobool(properties.reserved), 'Linux', 'Windows'),
+          quantity = toint(sku.capacity),
+          tags

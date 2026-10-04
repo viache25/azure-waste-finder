@@ -38,12 +38,12 @@
 <div class="demo"><strong>Demo-Daten:</strong> fiktive Subscriptions und Beispielpreise, keine echte Umgebung.</div>
   <div class="total">
     Sie verlieren ca.
-    <div class="big">272,35 € pro Monat</div>
-    ≈ 3.268,20 € pro Jahr durch 9 ungenutzte Ressourcen.
+    <div class="big">412,36 € pro Monat</div>
+    ≈ 4.948,32 € pro Jahr durch 11 ungenutzte Ressourcen.
 <br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).  </div>
 
   <h2>Subscription <code>11111111-1111-1111-1111-111111111111</code></h2>
-  <p>Ca. <strong>238,30 € pro Monat</strong> durch 3 Ressource(n).</p>
+  <p>Ca. <strong>366,78 € pro Monat</strong> durch 4 Ressource(n).</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
@@ -56,6 +56,15 @@
         <td>Standard_D4s_v5</td>
         <td class="num">148,19 €</td>
         <td>VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird.<br><code class="cmd">az vm deallocate --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/build-agent-02</code></td>
+      </tr>
+      <tr>
+        <td><code>asp-intranet-legacy</code></td>
+        <td>Leerer App-Service-Plan</td>
+        <td><span class="sev sev-medium">mittel</span></td>
+        <td>rg-intranet</td>
+        <td>S1, 2 Instanz(en)</td>
+        <td class="num">128,48 €</td>
+        <td>Plan löschen, wenn keine App mehr darauf soll; sonst auf den Free-Tarif (F1) oder eine kleinere Stufe skalieren.<br><code class="cmd">az appservice plan delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-intranet/providers/Microsoft.Web/serverfarms/asp-intranet-legacy</code></td>
       </tr>
       <tr>
         <td><code>erp-db-old-data</code></td>
@@ -79,7 +88,7 @@
   </table>
   </div>
   <h2>Subscription <code>00000000-0000-0000-0000-000000000000</code></h2>
-  <p>Ca. <strong>34,05 € pro Monat</strong> durch 6 Ressource(n).</p>
+  <p>Ca. <strong>45,58 € pro Monat</strong> durch 7 Ressource(n).</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
@@ -92,6 +101,15 @@
         <td>Premium_LRS (128 GB), 124 Tage alt</td>
         <td class="num">16,33 €</td>
         <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/snapshots/web-os-before-upgrade</code></td>
+      </tr>
+      <tr>
+        <td><code>awf-empty-plan</code></td>
+        <td>Leerer App-Service-Plan</td>
+        <td><span class="sev sev-medium">mittel</span></td>
+        <td>awf-waste-demo-rg</td>
+        <td>B1, 1 Instanz(en)</td>
+        <td class="num">11,53 €</td>
+        <td>Plan löschen, wenn keine App mehr darauf soll; sonst auf den Free-Tarif (F1) oder eine kleinere Stufe skalieren.<br><code class="cmd">az appservice plan delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Web/serverfarms/awf-empty-plan</code></td>
       </tr>
       <tr>
         <td><code>awf-stopped-vm</code></td>
@@ -148,6 +166,7 @@
     <li><strong>VM gestoppt, aber nicht dealloziert:</strong> Im Zustand &#39;Stopped&#39; bleibt die Hardware reserviert und die Rechenleistung wird weiter verrechnet. (<a href="https://learn.microsoft.com/azure/virtual-machines/states-billing">Doku</a>)</li>
     <li><strong>Ungenutzte öffentliche IP-Adresse:</strong> Standard-IPs werden pro Stunde verrechnet, auch ohne Zuordnung. (<a href="https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses">Doku</a>)</li>
     <li><strong>Alter Disk-Snapshot:</strong> Snapshots werden pro GB und Monat verrechnet, solange sie existieren, auch wenn die Quell-Disk längst gelöscht ist. Geschätzt mit der bereitgestellten Größe (Obergrenze; verrechnet wird die belegte Größe). (<a href="https://learn.microsoft.com/azure/virtual-machines/disks-understand-billing">Doku</a>)</li>
+    <li><strong>Leerer App-Service-Plan:</strong> Ein App-Service-Plan wird pro Instanz und Stunde verrechnet, auch wenn keine App darauf läuft. (<a href="https://learn.microsoft.com/azure/app-service/overview-hosting-plans">Doku</a>)</li>
   </ul>
 
   <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>

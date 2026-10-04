@@ -139,12 +139,32 @@ def _snapshot_price(finding: Finding, fetch: PriceFetcher) -> tuple[float | None
     return None, f"no snapshot price for {product}, {redundancy}"
 
 
+def _app_service_plan_price(finding: Finding, fetch: PriceFetcher) -> tuple[float | None, str]:
+    """Hourly plan price × 730 × instances. The Retail API writes 'P1 v3' where ARM writes 'P1v3'."""
+    items = fetch(
+        f"serviceName eq 'Azure App Service' and priceType eq 'Consumption' and armRegionName eq '{finding.location}'"
+    )
+    linux = (finding.os_type or "").lower() == "linux"
+    wanted = finding.sku.replace(" ", "").lower()
+    instances = finding.quantity or 1  # a plan always runs at least one instance
+    for item in items:
+        product = item.get("productName", "")
+        if item.get("unitOfMeasure") != "1 Hour" or " Plan" not in product or product.endswith(" - Linux") != linux:
+            continue
+        if item.get("skuName", "").replace(" ", "").lower() == wanted:
+            price = item["retailPrice"]
+            note = f"{price} €/h × {HOURS_PER_MONTH} h × {instances} instance(s)"
+            return price * HOURS_PER_MONTH * instances, note
+    return None, f"no App Service plan price for {finding.sku} ({'Linux' if linux else 'Windows'})"
+
+
 # strategy name (registry.Rule.pricing) -> function
 STRATEGIES: dict[str, PricingStrategy] = {
     "vm_compute": _vm_price,
     "managed_disk": _disk_price,
     "public_ip": _ip_price,
     "snapshot": _snapshot_price,
+    "app_service_plan": _app_service_plan_price,
 }
 
 

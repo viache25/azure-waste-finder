@@ -134,6 +134,11 @@ run "extra_waste_off_by_default" {
     condition     = output.expected_findings.old_snapshot == null
     error_message = "Without extra waste there is no snapshot to find."
   }
+
+  assert {
+    condition     = length(azurerm_service_plan.empty) == 0 && output.expected_findings.empty_app_service_plan == null
+    error_message = "The empty App Service plan must be opt-in (enable_extra_waste)."
+  }
 }
 
 run "extra_waste_snapshot" {
@@ -180,5 +185,33 @@ run "extra_waste_snapshot" {
   assert {
     condition     = output.expected_findings.old_snapshot == "test-old-snapshot"
     error_message = "expected_findings must list the snapshot when extra waste is enabled."
+  }
+}
+
+run "extra_waste_app_service_plan" {
+  command = plan
+
+  variables {
+    enable_extra_waste = true
+  }
+
+  assert {
+    condition     = length(azurerm_service_plan.empty) == 1
+    error_message = "enable_extra_waste = true must create the empty App Service plan."
+  }
+
+  assert {
+    condition     = azurerm_service_plan.empty[0].sku_name == "B1" && azurerm_service_plan.empty[0].os_type == "Linux" && azurerm_service_plan.empty[0].worker_count == 1
+    error_message = "The empty plan must be the cheapest paid plan: B1 Linux with one instance."
+  }
+
+  assert {
+    condition     = azurerm_service_plan.empty[0].tags == tomap({ project = "azure-waste-finder", purpose = "waste-demo", managed_by = "terraform" })
+    error_message = "The App Service plan must carry the project, purpose and managed_by tags."
+  }
+
+  assert {
+    condition     = output.expected_findings.empty_app_service_plan == "test-empty-plan"
+    error_message = "expected_findings must list the plan when extra waste is enabled."
   }
 }

@@ -39,8 +39,8 @@
   <div class="total">
     Sie verlieren ca.
     <div class="big">509,03 € pro Monat</div>
-    ≈ 6.108,36 € pro Jahr durch 16 ungenutzte Ressourcen.
-<br>Die Ressourcen kosten zusammen ca. 533,36 € pro Monat; eingespart wird weniger, weil verkleinerte Ressourcen weiter etwas kosten (Spalten „Kosten“ und „Einsparung“).<br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).  </div>
+    ≈ 6.108,36 € pro Jahr durch 15 ungenutzte Ressourcen.
+<br>Die Ressourcen kosten zusammen ca. 533,36 € pro Monat; eingespart wird weniger, weil verkleinerte Ressourcen weiter etwas kosten (Spalten „Kosten“ und „Einsparung“).<br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).<br>Dazu 6 kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).  </div>
 
   <h2>Subscription <code>11111111-1111-1111-1111-111111111111</code></h2>
   <p>Ca. <strong>444,12 € pro Monat</strong> durch 6 Ressource(n).</p>
@@ -112,7 +112,7 @@
   </table>
   </div>
   <h2>Subscription <code>00000000-0000-0000-0000-000000000000</code></h2>
-  <p>Ca. <strong>64,91 € pro Monat</strong> durch 10 Ressource(n).</p>
+  <p>Ca. <strong>64,91 € pro Monat</strong> durch 9 Ressource(n).</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten €/Monat</th><th class="num">Einsparung €/Monat</th><th>Empfehlung</th></tr></thead>
@@ -207,19 +207,67 @@
         <td class="num">1,41 €</td>
         <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/snapshots/awf-old-snapshot</code></td>
       </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2 id="aufraeumen">Aufräumen (kostenlos)</h2>
+  <p>Diese Ressourcen kosten nichts und zählen nicht zur Summe oben. Aufräumen schafft Übersicht und vermeidet Fehler.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Subscription</th><th>Ressourcengruppe</th><th>Empfehlung</th></tr></thead>
+    <tbody>
       <tr>
         <td><code>awf-idle-lb</code></td>
         <td>Load Balancer ohne Backend</td>
-        <td><span class="sev sev-info">info</span></td>
+        <td><code>00000000-0000-0000-0000-000000000000</code></td>
         <td>awf-waste-demo-rg</td>
-        <td>Standard, 0 Regel(n)</td>
-        <td class="num">0,00 €</td>
-        <td class="num">0,00 €</td>
         <td>Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder Backends zugeordnet sind.<br><code class="cmd">az network lb delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/loadBalancers/awf-idle-lb</code></td>
+      </tr>
+      <tr>
+        <td><code>rg-migration-temp</code></td>
+        <td>Leere Ressourcengruppe</td>
+        <td><code>00000000-0000-0000-0000-000000000000</code></td>
+        <td>rg-migration-temp</td>
+        <td>Löschen, wenn kein neues Projekt darin geplant ist.<br><code class="cmd">az group delete --name rg-migration-temp --subscription 00000000-0000-0000-0000-000000000000</code></td>
+      </tr>
+      <tr>
+        <td><code>web-old-vm2-nic</code></td>
+        <td>Verwaiste Netzwerkschnittstelle</td>
+        <td><code>00000000-0000-0000-0000-000000000000</code></td>
+        <td>rg-web-old</td>
+        <td>Löschen, wenn keine VM sie mehr bekommen soll.<br><code class="cmd">az network nic delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/networkInterfaces/web-old-vm2-nic</code></td>
+      </tr>
+      <tr>
+        <td><code>web-old-nsg</code></td>
+        <td>Nicht zugeordnete Netzwerksicherheitsgruppe</td>
+        <td><code>00000000-0000-0000-0000-000000000000</code></td>
+        <td>rg-web-old</td>
+        <td>Löschen oder bewusst dem vorgesehenen Subnetz zuordnen.<br><code class="cmd">az network nsg delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/networkSecurityGroups/web-old-nsg</code></td>
+      </tr>
+      <tr>
+        <td><code>rg-poc-2024</code></td>
+        <td>Leere Ressourcengruppe</td>
+        <td><code>11111111-1111-1111-1111-111111111111</code></td>
+        <td>rg-poc-2024</td>
+        <td>Löschen, wenn kein neues Projekt darin geplant ist.<br><code class="cmd">az group delete --name rg-poc-2024 --subscription 11111111-1111-1111-1111-111111111111</code></td>
+      </tr>
+      <tr>
+        <td><code>build-agent-01-nic</code></td>
+        <td>Verwaiste Netzwerkschnittstelle</td>
+        <td><code>11111111-1111-1111-1111-111111111111</code></td>
+        <td>rg-test</td>
+        <td>Löschen, wenn keine VM sie mehr bekommen soll.<br><code class="cmd">az network nic delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Network/networkInterfaces/build-agent-01-nic</code></td>
       </tr>
     </tbody>
   </table>
   </div>
+  <ul>
+    <li><strong>Load Balancer ohne Backend:</strong> Ein Standard Load Balancer wird pro Stunde für seine Lastenausgleichs- und Ausgangsregeln verrechnet, auch ohne Backend-Mitglieder. Ohne Regeln fällt keine Stundengebühr an; dann ist es nur ein Hinweis. (<a href="https://learn.microsoft.com/azure/load-balancer/load-balancer-overview">Doku</a>)</li>
+    <li><strong>Leere Ressourcengruppe:</strong> Kostet nichts, macht aber Zuständigkeiten, Budgets und Berechtigungen unübersichtlich; oft der Rest eines abgeschlossenen Projekts. (<a href="https://learn.microsoft.com/azure/azure-resource-manager/management/manage-resource-groups-cli">Doku</a>)</li>
+    <li><strong>Verwaiste Netzwerkschnittstelle:</strong> Kostet nichts, belegt aber eine private IP-Adresse im Subnetz und bleibt oft nach dem Löschen einer VM zurück. (<a href="https://learn.microsoft.com/azure/virtual-network/virtual-network-network-interface">Doku</a>)</li>
+    <li><strong>Nicht zugeordnete Netzwerksicherheitsgruppe:</strong> Kostet nichts, schützt aber auch nichts: Ihre Regeln wirken erst, wenn sie einem Subnetz oder einer Netzwerkschnittstelle zugeordnet ist. (<a href="https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview">Doku</a>)</li>
+  </ul>
 
   <h2>Warum kostet das Geld?</h2>
   <ul>

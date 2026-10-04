@@ -27,8 +27,11 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 | NAT gateway without subnet | medium | The gateway bills per hour (Retail API meter `Standard Gateway`) whether traffic flows or not; its public IPs bill on top | `az network nat gateway delete`, then check the freed public IPs |
 | Load balancer without backends | low, or info | A Standard load balancer with empty backend pools still bills per hour for its load-balancing and outbound rules (first 5 rules one meter, then per rule). Without rules there is no hourly charge, so the finding costs 0 and becomes `info` | `az network lb delete`, or remove the rules until backends return |
 | Premium disk on deallocated VM | medium | A deallocated VM bills no compute, but its Premium SSD / Standard SSD disks keep billing their tier. Reported when the VM has been deallocated for 30 days (`--downgrade-lookback`, from the disk's `LastOwnershipUpdateTime`). **Savings** = price difference to the Standard HDD tier of the same size, so the report shows cost and savings separately | `az disk update --sku Standard_LRS` while the VM stays deallocated, or delete VM and disks |
+| Orphaned network interface | info (free) | Costs nothing, but holds a private IP and is usually left over from a deleted VM (NICs of private endpoints, private link services and PaaS workloads are skipped) | `az network nic delete` |
+| Unattached NSG | info (free) | Costs nothing, but protects nothing until it is associated with a subnet or NIC | `az network nsg delete`, or associate it on purpose |
+| Empty resource group | info (free) | Costs nothing, but clutters ownership, budgets and permissions (groups managed by a service, e.g. AKS node groups, are skipped) | `az group delete --name <rg>` |
 
-A finding whose resource bills nothing (price 0) is always reported with severity `info`.
+A finding that saves nothing is always reported with severity `info`. Findings for resources that cost nothing (the three free rules above, or a load balancer without rules) go into a separate report section **"Aufräumen (kostenlos)"**: they are not part of the total, the savings threshold (`--min-savings`) does not drop them, and JSON lists them under `cleanup`.
 
 Rules are data: each one is a single entry in `registry.py` (German and English title, severity, KQL file, pricing strategy, remediation text and `az` command, docs link) plus a KQL file. The report shows the severity, a docs link per rule and the exact `az` command per finding; the tool itself never runs them.
 
@@ -61,7 +64,7 @@ src/waste_finder/
   export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (208 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (235 tests), runs fully offline, coverage floor 95 %
 docs/report.schema.json   JSON Schema of report.json
 ```
 
@@ -119,6 +122,7 @@ The demo environment uses the smallest SKUs (B1s VM, 32 GB Standard HDD, one Sta
 | Incremental snapshot of the orphaned 32 GB disk | `old_snapshot` | at most 0.002 €/h (0.044 € per GB-month × 32 GB; the disk is empty, so in practice close to 0) |
 | Empty App Service plan, B1 Linux, 1 instance | `empty_app_service_plan` | about 0.016 €/h (~11.50 € per month) |
 | Internal Standard load balancer, empty backend pool, no rules | `idle_load_balancer` (info, 0 €) | 0 €/h: no rules, no hourly charge, no data processed |
+| Orphaned NIC, unattached NSG, empty resource group | `orphaned_nic`, `unattached_nsg`, `empty_resource_group` | 0 €/h |
 
 Snapshots are only reported once they are 30 days old; right after `apply`, run the finder with `--snapshot-min-age 0` to see it.
 
@@ -146,7 +150,7 @@ waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 abov
 | `--subscription ID` | Subscription to scan; repeat for several. Default `$AZURE_SUBSCRIPTION_ID` |
 | `--all-subscriptions` | Every subscription the credential can read (Resource Graph at tenant scope) |
 | `--management-group ID` | All subscriptions below this management group |
-| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`, `empty_app_service_plan`, `idle_nat_gateway`, `idle_load_balancer`, `premium_disk_deallocated_vm`) |
+| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`, `empty_app_service_plan`, `idle_nat_gateway`, `idle_load_balancer`, `premium_disk_deallocated_vm`, `orphaned_nic`, `unattached_nsg`, `empty_resource_group`) |
 | `--exclude PATTERN` | Ignore resources whose ID matches the glob (case-insensitive); repeatable |
 | `--min-savings AMOUNT` | Leave out findings that save less per month; unpriced findings stay in |
 | `--snapshot-min-age DAYS` | `old_snapshot` reports snapshots at least this many days old (default 30; age from the snapshot's creation time) |
@@ -182,10 +186,10 @@ downgrade_lookback_days = 30       # premium_disk_deallocated_vm: VM deallocated
 
 | Format | File | Use |
 |---|---|---|
-| `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription |
-| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.2`; 1.1 added `age_days`, 1.2 `quantity`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
-| `csv` | `report.csv` | One row per finding (subscription, resource group, rule, severity, age, quantity, cost, savings, currency, resource ID, `az` command) for Excel |
-| `sarif` | `report.sarif` | SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding (`high` → error, `medium` → warning, `low`/`info` → note). Azure resources are not files, so the resource ID is the alert's path; a fingerprint of rule + resource ID keeps alerts stable, so cleaning up a resource closes its alert |
+| `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription, plus the section "Aufräumen (kostenlos)" for free findings |
+| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.3`; 1.1 added `age_days`, 1.2 `quantity`, 1.3 the `cleanup` list and `summary.cleanup`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
+| `csv` | `report.csv` | One row per finding, free clean-up findings last (subscription, resource group, rule, severity, age, quantity, cost, savings, currency, resource ID, `az` command) for Excel |
+| `sarif` | `report.sarif` | SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding, free clean-up findings included (`high` → error, `medium` → warning, `low`/`info` → note). Azure resources are not files, so the resource ID is the alert's path; a fingerprint of rule + resource ID keeps alerts stable, so cleaning up a resource closes its alert |
 
 Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`sarif_file: reports/report.sarif`, `category: azure-waste-finder`) to see findings under Security → Code scanning.
 
@@ -195,7 +199,7 @@ Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`s
 | `2` | Usage or config error (unknown rule, format or currency, bad config file, no subscription given) |
 | `3` | Monthly waste is above `--fail-over` / `fail_over` (strictly greater); all reports were written |
 
-`--summary` appends a few lines (total, threshold verdict, one row per rule) to a file. In GitHub Actions, `--summary "$GITHUB_STEP_SUMMARY"` puts them on the run's summary page; CI does this for the demo run.
+`--summary` appends a few lines (total, threshold verdict, one row per rule, counts of unpriced, ignored, below-threshold and free clean-up findings) to a file. In GitHub Actions, `--summary "$GITHUB_STEP_SUMMARY"` puts them on the run's summary page; CI does this for the demo run.
 
 ## Security
 
@@ -236,7 +240,7 @@ Dependabot opens weekly PRs for pip, GitHub Actions and Terraform providers: min
 
 ## Roadmap
 
-The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (free clean-up findings), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
+The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules, actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
 
 ## License
 

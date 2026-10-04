@@ -61,3 +61,40 @@ resource "azurerm_lb_backend_address_pool" "idle" {
   name            = "empty"
   loadbalancer_id = azurerm_lb.idle[0].id
 }
+
+# Free clean-up findings ("Aufräumen (kostenlos)"): none of these costs anything.
+
+# Network interface without a VM, e.g. left behind after a VM was deleted. Private IP only.
+resource "azurerm_network_interface" "orphaned" {
+  count = var.enable_extra_waste ? 1 : 0
+
+  name                = "${var.prefix}-orphaned-nic"
+  resource_group_name = azurerm_resource_group.demo.name
+  location            = azurerm_resource_group.demo.location
+  tags                = local.tags
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.demo.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+# Network security group that is associated with neither a subnet nor a NIC (and has no custom rules).
+resource "azurerm_network_security_group" "unattached" {
+  count = var.enable_extra_waste ? 1 : 0
+
+  name                = "${var.prefix}-unattached-nsg"
+  resource_group_name = azurerm_resource_group.demo.name
+  location            = azurerm_resource_group.demo.location
+  tags                = local.tags
+}
+
+# Resource group without any resource.
+resource "azurerm_resource_group" "empty" {
+  count = var.enable_extra_waste ? 1 : 0
+
+  name     = "${var.prefix}-empty-rg"
+  location = var.location
+  tags     = local.tags
+}

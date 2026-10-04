@@ -26,13 +26,15 @@ class Rule:
     pricing: str  # key in pricing.STRATEGIES
     why_de: str  # why it costs money (German, for the report)
     action_de: str  # what to do (German, for the report)
-    command: str  # az command for the remediation; {id} is replaced by the resource ID
+    command: str  # az command for the remediation; placeholders {id}, {name} (last ID segment), {subscription}
     docs_url: str
     quantity_unit_de: str = ""  # label for Finding.quantity in the report, e.g. "Instanz(en)"; empty = not shown
     age_label_de: str = "Tage alt"  # label for Finding.age_days in the report
 
     def remediation_command(self, resource_id: str) -> str:
-        return self.command.format(id=resource_id)
+        parts = resource_id.strip("/").split("/")
+        subscription = parts[1] if len(parts) > 1 and parts[0].lower() == "subscriptions" else ""
+        return self.command.format(id=resource_id, name=parts[-1], subscription=subscription)
 
 
 REGISTRY: dict[str, Rule] = {
@@ -168,6 +170,52 @@ REGISTRY: dict[str, Rule] = {
             command="az disk update --sku Standard_LRS --ids {id}",
             docs_url="https://learn.microsoft.com/azure/virtual-machines/disks-convert-types",
             age_label_de="Tage dealloziert",
+        ),
+        # Free hygiene findings (pricing "free", cost 0): they land in the report section "Aufräumen (kostenlos)".
+        Rule(
+            id="orphaned_nic",
+            title_de="Verwaiste Netzwerkschnittstelle",
+            title_en="Orphaned network interface",
+            severity="info",
+            query_file="orphaned_nics.kql",
+            pricing="free",
+            why_de=(
+                "Kostet nichts, belegt aber eine private IP-Adresse im Subnetz und bleibt oft nach dem Löschen "
+                "einer VM zurück."
+            ),
+            action_de="Löschen, wenn keine VM sie mehr bekommen soll.",
+            command="az network nic delete --ids {id}",
+            docs_url="https://learn.microsoft.com/azure/virtual-network/virtual-network-network-interface",
+        ),
+        Rule(
+            id="unattached_nsg",
+            title_de="Nicht zugeordnete Netzwerksicherheitsgruppe",
+            title_en="Unattached NSG",
+            severity="info",
+            query_file="unattached_nsgs.kql",
+            pricing="free",
+            why_de=(
+                "Kostet nichts, schützt aber auch nichts: Ihre Regeln wirken erst, wenn sie einem Subnetz oder "
+                "einer Netzwerkschnittstelle zugeordnet ist."
+            ),
+            action_de="Löschen oder bewusst dem vorgesehenen Subnetz zuordnen.",
+            command="az network nsg delete --ids {id}",
+            docs_url="https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview",
+        ),
+        Rule(
+            id="empty_resource_group",
+            title_de="Leere Ressourcengruppe",
+            title_en="Empty resource group",
+            severity="info",
+            query_file="empty_resource_groups.kql",
+            pricing="free",
+            why_de=(
+                "Kostet nichts, macht aber Zuständigkeiten, Budgets und Berechtigungen unübersichtlich; oft der Rest "
+                "eines abgeschlossenen Projekts."
+            ),
+            action_de="Löschen, wenn kein neues Projekt darin geplant ist.",
+            command="az group delete --name {name} --subscription {subscription}",
+            docs_url="https://learn.microsoft.com/azure/azure-resource-manager/management/manage-resource-groups-cli",
         ),
     )
 }

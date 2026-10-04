@@ -17,11 +17,11 @@ from typing import Any
 from waste_finder import __version__
 from waste_finder.models import Finding
 from waste_finder.registry import REGISTRY, SEVERITIES
-from waste_finder.report import Summary, eur
+from waste_finder.report import Summary, cleanup_order, eur
 
 FORMATS = ("md", "html", "json", "csv", "sarif")
 DEFAULT_FORMATS = ("md", "html")
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 SARIF_LEVELS = {"high": "error", "medium": "warning", "low": "note", "info": "note"}
@@ -87,7 +87,7 @@ def finding_dict(f: Finding) -> dict[str, Any]:
     }
 
 
-def render_json(findings: list[Finding], summary: Summary, run: RunInfo) -> str:
+def render_json(findings: list[Finding], summary: Summary, run: RunInfo, cleanup: list[Finding] | None = None) -> str:
     data = {
         "schema_version": SCHEMA_VERSION,
         "tool": {"name": "azure-waste-finder", "version": __version__},
@@ -103,18 +103,20 @@ def render_json(findings: list[Finding], summary: Summary, run: RunInfo) -> str:
             "ignored": summary.ignored,
             "below_threshold": summary.below_threshold,
             "min_monthly_savings": run.min_monthly_savings,
+            "cleanup": summary.cleanup,
         },
         "findings": [finding_dict(f) for f in _ordered(findings)],
+        "cleanup": [finding_dict(f) for f in cleanup_order(cleanup or [])],
     }
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
-def render_csv(findings: list[Finding], summary: Summary, run: RunInfo) -> str:
-    """One row per finding; amounts with a dot as decimal separator, empty when unpriced."""
+def render_csv(findings: list[Finding], summary: Summary, run: RunInfo, cleanup: list[Finding] | None = None) -> str:
+    """One row per finding, free clean-up findings last; amounts with a dot as decimal separator, empty if unpriced."""
     out = io.StringIO()
     writer = csv.DictWriter(out, fieldnames=CSV_COLUMNS, lineterminator="\n")
     writer.writeheader()
-    for f in _ordered(findings):
+    for f in _ordered(findings) + cleanup_order(cleanup or []):
         d = finding_dict(f)
         d["title"] = d["title_en"]
         d["currency"] = run.currency
@@ -126,8 +128,9 @@ def _fingerprint(f: Finding) -> str:
     return hashlib.sha256(f"{f.rule}|{f.resource_id.lower()}".encode()).hexdigest()
 
 
-def render_sarif(findings: list[Finding], summary: Summary, run: RunInfo) -> str:
-    """SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding.
+def render_sarif(findings: list[Finding], summary: Summary, run: RunInfo, cleanup: list[Finding] | None = None) -> str:
+    """SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding (free clean-up
+    findings included, as notes).
 
     Azure resources are not files, so each result points at the resource ID as its artifact URI
     (shown as the alert's path) and names it as a logical location. The fingerprint (rule + resource ID)
@@ -148,7 +151,7 @@ def render_sarif(findings: list[Finding], summary: Summary, run: RunInfo) -> str
         for r in REGISTRY.values()
     ]
     results = []
-    for f in _ordered(findings):
+    for f in _ordered(findings) + cleanup_order(cleanup or []):
         rule = REGISTRY[f.rule]
         amount = eur(f.savings_eur, run.currency)
         results.append(
@@ -221,13 +224,14 @@ def render_summary(findings: list[Finding], summary: Summary, run: RunInfo, fail
             rule = REGISTRY[rule_id]
             severity = SEVERITIES[rule.severity]
             lines.append(f"| {rule.title_de} | {severity} | {len(per_rule[rule_id])} | {money(totals[rule_id])} |")
-    if summary.ignored or summary.below_threshold or summary.unpriced:
+    if summary.ignored or summary.below_threshold or summary.unpriced or summary.cleanup:
         notes = [
             f"{n} {label}"
             for n, label in (
                 (summary.unpriced, "ohne Preis"),
                 (summary.ignored, "ignoriert"),
                 (summary.below_threshold, "unter der Schwelle"),
+                (summary.cleanup, "kostenlos aufzuräumen"),
             )
             if n
         ]

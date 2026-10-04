@@ -34,5 +34,16 @@
     {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-sap-test/providers/Microsoft.Compute/disks/sap-test-db-data", "name": "sap-test-db-data", "resourceGroup": "rg-sap-test", "location": "westeurope", "sku": "Premium_LRS", "sizeGb": 512, "vmId": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-sap-test/providers/Microsoft.Compute/virtualMachines/sap-test-db", "since": "2026-07-21T18:05:00Z", "ageDays": 75, "tags": {"owner": "sap-team"}},
     {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Compute/disks/jumpbox-osdisk", "name": "jumpbox-osdisk", "resourceGroup": "rg-test", "location": "westeurope", "sku": "Premium_LRS", "sizeGb": 64, "vmId": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/jumpbox", "since": "2026-10-01T19:30:00Z", "ageDays": 3, "tags": {}},
     {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/disks/web-old-vm-osdisk", "name": "web-old-vm-osdisk", "resourceGroup": "rg-web-old", "location": "westeurope", "sku": "StandardSSD_LRS", "sizeGb": 128, "vmId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/virtualMachines/web-old-vm", "since": "2026-08-25T07:00:00Z", "ageDays": 40, "tags": {}}
+  ],
+  "orphaned_nic": [
+    {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Network/networkInterfaces/build-agent-01-nic", "name": "build-agent-01-nic", "resourceGroup": "rg-test", "location": "westeurope", "privateIp": "10.20.1.4", "tags": {}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/networkInterfaces/web-old-vm2-nic", "name": "web-old-vm2-nic", "resourceGroup": "rg-web-old", "location": "westeurope", "privateIp": "10.30.0.5", "tags": {}}
+  ],
+  "unattached_nsg": [
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/networkSecurityGroups/web-old-nsg", "name": "web-old-nsg", "resourceGroup": "rg-web-old", "location": "westeurope", "tags": {}}
+  ],
+  "empty_resource_group": [
+    {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-poc-2024", "name": "rg-poc-2024", "resourceGroup": "rg-poc-2024", "location": "westeurope", "tags": {"project": "poc-2024"}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-migration-temp", "name": "rg-migration-temp", "resourceGroup": "rg-migration-temp", "location": "germanywestcentral", "tags": {}}
   ]
 }

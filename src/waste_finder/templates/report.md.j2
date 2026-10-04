@@ -26,6 +26,10 @@ Die Ressourcen kosten zusammen ca. {{ summary.monthly_cost_eur | eur }} pro Mona
 
 {{ summary.below_threshold }} Ressource(n) unter der Schwelle von {{ min_savings | eur }} pro Monat nicht aufgeführt.
 {% endif %}
+{% if summary.cleanup %}
+
+Dazu {{ summary.cleanup }} kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).
+{% endif %}
 
 ## Gefundene Ressourcen
 {% for group in groups %}
@@ -43,10 +47,33 @@ Ca. **{{ group.monthly_eur | eur }} pro Monat** durch {{ group.findings | length
 
 Keine verschwendeten Ressourcen gefunden.
 {% endfor %}
+{% if cleanup %}
+
+## Aufräumen (kostenlos)
+
+Diese Ressourcen kosten nichts und zählen nicht zur Summe oben. Aufräumen schafft Übersicht und vermeidet Fehler.
+
+| # | Ressource | Problem | Subscription | Ressourcengruppe | Empfehlung |
+|---|---|---|---|---|---|
+{% for f in cleanup %}
+| {{ loop.index }} | `{{ f.name }}` | {{ rules[f.rule].title_de }} | `{{ f.subscription_id or "unbekannt" }}` | {{ f.resource_group }} | {{ rules[f.rule].action_de }} |
+{% endfor %}
+
+{% for rule_id in cleanup | map(attribute="rule") | unique %}
+- **{{ rules[rule_id].title_de }}:** {{ rules[rule_id].why_de }} ([Doku]({{ rules[rule_id].docs_url }}))
+{% endfor %}
+
+```bash
+{% for f in cleanup %}
+# {{ f.name }}: {{ rules[f.rule].title_de }}
+{{ rules[f.rule].remediation_command(f.resource_id) }}
+{% endfor %}
+```
+{% endif %}
 
 ## Warum kostet das Geld?
 
-{% for rule in rules.values() %}
+{% for rule in rules.values() if rule.pricing != "free" %}
 - **{{ rule.title_de }}:** {{ rule.why_de }} ([Doku]({{ rule.docs_url }}))
 {% endfor %}
 {% if findings %}

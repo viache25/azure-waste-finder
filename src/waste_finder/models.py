@@ -35,6 +35,11 @@ class Finding:
         return parts[2] if len(parts) > 2 and parts[1].lower() == "subscriptions" else ""
 
     @property
+    def is_free(self) -> bool:
+        """Priced at exactly 0: nothing to save, only to clean up (report section "Aufräumen (kostenlos)")."""
+        return self.monthly_cost_eur == 0
+
+    @property
     def savings_eur(self) -> float | None:
         """Monthly savings; defaults to the full cost when no separate savings are known."""
         return self.monthly_savings_eur if self.monthly_savings_eur is not None else self.monthly_cost_eur

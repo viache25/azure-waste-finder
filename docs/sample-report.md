@@ -7,11 +7,13 @@
 
 ## Ergebnis
 
-Sie verlieren ca. **509,03 € pro Monat** (≈ 6.108,36 € pro Jahr) durch **16** ungenutzte Ressourcen.
+Sie verlieren ca. **509,03 € pro Monat** (≈ 6.108,36 € pro Jahr) durch **15** ungenutzte Ressourcen.
 
 Die Ressourcen kosten zusammen ca. 533,36 € pro Monat; eingespart wird weniger, weil verkleinerte Ressourcen weiter etwas kosten (Spalten „Kosten“ und „Einsparung“).
 
 1 Ressource(n) ignoriert (Tag `waste-finder:ignore=true` oder Ausschluss in der Konfiguration).
+
+Dazu 6 kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).
 
 ## Gefundene Ressourcen
 
@@ -30,7 +32,7 @@ Ca. **444,12 € pro Monat** durch 6 Ressource(n).
 
 ### Subscription `00000000-0000-0000-0000-000000000000`
 
-Ca. **64,91 € pro Monat** durch 10 Ressource(n).
+Ca. **64,91 € pro Monat** durch 9 Ressource(n).
 
 | # | Ressource | Problem | Priorität | Ressourcengruppe | SKU | Kosten €/Monat | Einsparung €/Monat | Empfehlung |
 |---|---|---|---|---|---|---:|---:|---|
@@ -43,7 +45,39 @@ Ca. **64,91 € pro Monat** durch 10 Ressource(n).
 | 7 | `web-old-vm-osdisk` | Premium-Disk an deallozierter VM | mittel | rg-web-old | StandardSSD_LRS (128 GB), 40 Tage dealloziert | 8,45 € | 3,27 € | Solange die VM dealloziert bleibt, die Disk auf Standard HDD umstellen (vor dem nächsten Start bei Bedarf zurück auf SSD); wird die VM nicht mehr gebraucht, VM und Disks löschen. |
 | 8 | `awf-orphaned-disk` | Nicht angehängte Managed Disk | mittel | awf-waste-demo-rg | Standard_LRS (32 GB) | 1,41 € | 1,41 € | Bei Bedarf Snapshot erstellen, dann Disk löschen. |
 | 9 | `awf-old-snapshot` | Alter Disk-Snapshot | niedrig | awf-waste-demo-rg | Standard_LRS (32 GB), 45 Tage alt | 1,41 € | 1,41 € | Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen. |
-| 10 | `awf-idle-lb` | Load Balancer ohne Backend | info | awf-waste-demo-rg | Standard, 0 Regel(n) | 0,00 € | 0,00 € | Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder Backends zugeordnet sind. |
+
+## Aufräumen (kostenlos)
+
+Diese Ressourcen kosten nichts und zählen nicht zur Summe oben. Aufräumen schafft Übersicht und vermeidet Fehler.
+
+| # | Ressource | Problem | Subscription | Ressourcengruppe | Empfehlung |
+|---|---|---|---|---|---|
+| 1 | `awf-idle-lb` | Load Balancer ohne Backend | `00000000-0000-0000-0000-000000000000` | awf-waste-demo-rg | Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder Backends zugeordnet sind. |
+| 2 | `rg-migration-temp` | Leere Ressourcengruppe | `00000000-0000-0000-0000-000000000000` | rg-migration-temp | Löschen, wenn kein neues Projekt darin geplant ist. |
+| 3 | `web-old-vm2-nic` | Verwaiste Netzwerkschnittstelle | `00000000-0000-0000-0000-000000000000` | rg-web-old | Löschen, wenn keine VM sie mehr bekommen soll. |
+| 4 | `web-old-nsg` | Nicht zugeordnete Netzwerksicherheitsgruppe | `00000000-0000-0000-0000-000000000000` | rg-web-old | Löschen oder bewusst dem vorgesehenen Subnetz zuordnen. |
+| 5 | `rg-poc-2024` | Leere Ressourcengruppe | `11111111-1111-1111-1111-111111111111` | rg-poc-2024 | Löschen, wenn kein neues Projekt darin geplant ist. |
+| 6 | `build-agent-01-nic` | Verwaiste Netzwerkschnittstelle | `11111111-1111-1111-1111-111111111111` | rg-test | Löschen, wenn keine VM sie mehr bekommen soll. |
+
+- **Load Balancer ohne Backend:** Ein Standard Load Balancer wird pro Stunde für seine Lastenausgleichs- und Ausgangsregeln verrechnet, auch ohne Backend-Mitglieder. Ohne Regeln fällt keine Stundengebühr an; dann ist es nur ein Hinweis. ([Doku](https://learn.microsoft.com/azure/load-balancer/load-balancer-overview))
+- **Leere Ressourcengruppe:** Kostet nichts, macht aber Zuständigkeiten, Budgets und Berechtigungen unübersichtlich; oft der Rest eines abgeschlossenen Projekts. ([Doku](https://learn.microsoft.com/azure/azure-resource-manager/management/manage-resource-groups-cli))
+- **Verwaiste Netzwerkschnittstelle:** Kostet nichts, belegt aber eine private IP-Adresse im Subnetz und bleibt oft nach dem Löschen einer VM zurück. ([Doku](https://learn.microsoft.com/azure/virtual-network/virtual-network-network-interface))
+- **Nicht zugeordnete Netzwerksicherheitsgruppe:** Kostet nichts, schützt aber auch nichts: Ihre Regeln wirken erst, wenn sie einem Subnetz oder einer Netzwerkschnittstelle zugeordnet ist. ([Doku](https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview))
+
+```bash
+# awf-idle-lb: Load Balancer ohne Backend
+az network lb delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/loadBalancers/awf-idle-lb
+# rg-migration-temp: Leere Ressourcengruppe
+az group delete --name rg-migration-temp --subscription 00000000-0000-0000-0000-000000000000
+# web-old-vm2-nic: Verwaiste Netzwerkschnittstelle
+az network nic delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/networkInterfaces/web-old-vm2-nic
+# web-old-nsg: Nicht zugeordnete Netzwerksicherheitsgruppe
+az network nsg delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/networkSecurityGroups/web-old-nsg
+# rg-poc-2024: Leere Ressourcengruppe
+az group delete --name rg-poc-2024 --subscription 11111111-1111-1111-1111-111111111111
+# build-agent-01-nic: Verwaiste Netzwerkschnittstelle
+az network nic delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-test/providers/Microsoft.Network/networkInterfaces/build-agent-01-nic
+```
 
 ## Warum kostet das Geld?
 
@@ -91,8 +125,6 @@ az disk update --sku Standard_LRS --ids /subscriptions/00000000-0000-0000-0000-0
 az disk delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/disks/awf-orphaned-disk
 # awf-old-snapshot: Alter Disk-Snapshot
 az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/snapshots/awf-old-snapshot
-# awf-idle-lb: Load Balancer ohne Backend
-az network lb delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/loadBalancers/awf-idle-lb
 ```
 
 ---

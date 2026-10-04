@@ -21,6 +21,7 @@ class Summary:
     monthly_cost_eur: float = 0.0  # what the resources cost now; more than monthly_eur when some are downgrades
     ignored: int = 0  # tagged waste-finder:ignore=true or matched an exclude pattern
     below_threshold: int = 0  # saves less than min_monthly_savings
+    cleanup: int = 0  # free clean-up findings, listed separately and not part of the total
 
 
 @dataclass
@@ -32,7 +33,7 @@ class Group:
     monthly_eur: float
 
 
-def summarize(findings: list[Finding], ignored: int = 0, below_threshold: int = 0) -> Summary:
+def summarize(findings: list[Finding], ignored: int = 0, below_threshold: int = 0, cleanup: int = 0) -> Summary:
     monthly = sum(f.savings_eur or 0 for f in findings)
     return Summary(
         count=len(findings),
@@ -42,7 +43,13 @@ def summarize(findings: list[Finding], ignored: int = 0, below_threshold: int = 
         monthly_cost_eur=round(sum(f.monthly_cost_eur or 0 for f in findings), 2),
         ignored=ignored,
         below_threshold=below_threshold,
+        cleanup=cleanup,
     )
+
+
+def cleanup_order(findings: list[Finding]) -> list[Finding]:
+    """Free clean-up findings by subscription, resource group, rule and name."""
+    return sorted(findings, key=lambda f: (f.subscription_id, f.resource_group.lower(), f.rule, f.name.lower()))
 
 
 def by_subscription(findings: list[Finding]) -> list[Group]:
@@ -75,6 +82,7 @@ def render(
     below_threshold: int = 0,
     min_savings: float = 0.0,
     currency: str = "EUR",
+    cleanup: list[Finding] | None = None,
 ) -> str:
     env = Environment(
         loader=PackageLoader("waste_finder", "templates"),
@@ -84,10 +92,12 @@ def render(
     )
     env.filters["eur"] = partial(eur, currency=currency)
     ordered = sorted(findings, key=lambda f: f.savings_eur or 0, reverse=True)
+    free = cleanup_order(cleanup or [])
     return env.get_template(f"report.{fmt}.j2").render(
         findings=ordered,
         groups=by_subscription(findings),
-        summary=summarize(findings, ignored=ignored, below_threshold=below_threshold),
+        cleanup=free,
+        summary=summarize(findings, ignored=ignored, below_threshold=below_threshold, cleanup=len(free)),
         rules=REGISTRY,
         severities=SEVERITIES,
         scope=scope,

@@ -12,6 +12,7 @@ from waste_finder.config import (
     load_config,
     resolve_settings,
     split_below_threshold,
+    split_free,
     split_ignored,
 )
 from waste_finder.models import Finding
@@ -269,3 +270,8 @@ def test_downgrade_lookback_from_config_and_flag(config_file):
     path = config_file("[thresholds]\ndowngrade_lookback_days = 90")
     assert resolve_settings(path, {}).min_age_days["premium_disk_deallocated_vm"] == 90
     assert resolve_settings(path, {"downgrade_lookback_days": 7}).downgrade_lookback_days == 7
+
+
+def test_split_free_keeps_unpriced_and_paid_findings():
+    free, paid, unpriced = finding(cost=0.0), finding(cost=2.0), finding(cost=None)
+    assert split_free([free, paid, unpriced]) == ([paid, unpriced], [free])

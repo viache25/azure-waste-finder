@@ -39,8 +39,9 @@ from waste_finder.costs import (
 from waste_finder.export import EXPORTERS, FORMATS, RunInfo, render_summary
 from waste_finder.pricing import price_findings, retail_api_fetcher
 from waste_finder.registry import REGISTRY
-from waste_finder.report import cleanup_order, eur, render, summarize
+from waste_finder.report import cleanup_order, eur, render, signed_eur, summarize
 from waste_finder.rules import Scope, find_waste, resource_graph_runner
+from waste_finder.trend import PreviousReport, compare, load_previous
 
 EXIT_OK, EXIT_USAGE, EXIT_OVER_THRESHOLD = 0, 2, 3
 
@@ -108,6 +109,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         metavar="FILE",
         help="Append a Markdown summary, e.g. $GITHUB_STEP_SUMMARY (empty value: no summary)",
     )
+    p.add_argument(
+        "--previous",
+        metavar="REPORT_JSON",
+        help=(
+            "report.json of an earlier run: the report shows new, resolved and unchanged findings and the change "
+            "per month (--demo uses a built-in previous run; empty value: no trend)"
+        ),
+    )
     p.add_argument("--config", type=Path, help="Config file (default: ./waste-finder.toml if it exists)")
     p.add_argument("--out-dir", type=Path, default=Path("reports"), help="Where to write report.<format>")
     p.add_argument("--demo", action="store_true", help="Use built-in fake data, no Azure access needed")
@@ -151,6 +160,13 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             },
         )
+        run_currency = "EUR" if args.demo else settings.currency  # demo prices are in EUR
+        previous: PreviousReport | None = load_previous(Path(args.previous)) if args.previous else None
+        if previous and previous.currency != run_currency:
+            raise ConfigError(
+                f"--previous {args.previous} is in {previous.currency}, this run in {run_currency}; "
+                "amounts cannot be compared"
+            )
     except ConfigError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USAGE
@@ -158,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     period: CostPeriod | None = last_days(date.today()) if settings.cost_source == "actual" else None
     cost_query: CostQuery | None = None
     if args.demo:
-        from waste_finder.demo import demo_cost_query, demo_fetcher, demo_runner
+        from waste_finder.demo import demo_cost_query, demo_fetcher, demo_previous_report, demo_runner
 
         if settings.currency != "EUR":
             print(f"note: demo prices are in EUR, ignoring currency {settings.currency}", file=sys.stderr)
@@ -166,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
         scope_label, run_query, fetch = "demo (Contoso)", demo_runner(), demo_fetcher()
         if period:
             cost_query = demo_cost_query()
+        if args.previous is None:  # the demo report shows a trend against a built-in earlier run
+            previous = demo_previous_report()
     else:
         scope = scope_from_args(args)
         if scope is None:
@@ -199,11 +217,12 @@ def main(argv: list[str] | None = None) -> int:
 
     run = RunInfo(scope_label, currency, args.demo, settings.min_monthly_savings, settings.cost_source, period)
     s = summarize(findings, ignored=len(ignored), below_threshold=len(below), cleanup=len(cleanup))
+    trend = compare(previous, findings, settings.rules) if previous else None
     args.out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for fmt in settings.formats:
         if fmt in EXPORTERS:
-            text = EXPORTERS[fmt](findings, s, run, cleanup)
+            text = EXPORTERS[fmt](findings, s, run, cleanup, trend)
         else:
             text = render(
                 findings,
@@ -217,17 +236,23 @@ def main(argv: list[str] | None = None) -> int:
                 cleanup=cleanup,
                 cost_source=settings.cost_source,
                 cost_period=period,
+                trend=trend,
             )
         path = args.out_dir / f"report.{fmt}"
         path.write_text(text, encoding="utf-8")
         written.append(str(path))
     if args.summary:  # empty when $GITHUB_STEP_SUMMARY is not set, e.g. outside GitHub Actions
         with Path(args.summary).open("a", encoding="utf-8") as summary_file:
-            summary_file.write(render_summary(findings, s, run, settings.fail_over))
+            summary_file.write(render_summary(findings, s, run, settings.fail_over, trend))
 
     print(f"{s.count} findings, ~{eur(s.monthly_eur, currency)} per month (~{eur(s.yearly_eur, currency)} per year)")
     if period:
         print(f"  {s.actual} priced from Cost Management ({period.start} to {period.end}), the rest from retail prices")
+    if trend:
+        print(
+            f"  trend since {trend.previous.generated}: {signed_eur(trend.monthly_change, currency)} per month "
+            f"({len(trend.new)} new, {len(trend.resolved)} resolved, {len(trend.unchanged)} unchanged)"
+        )
     if ignored:
         print(f"  {len(ignored)} ignored (tag {IGNORE_TAG}=true or exclude pattern)")
     if below:

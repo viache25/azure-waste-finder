@@ -14,6 +14,10 @@ from waste_finder.registry import REGISTRY, SEVERITIES
 
 if TYPE_CHECKING:
     from waste_finder.costs import CostPeriod
+    from waste_finder.trend import Trend
+
+# German labels of the trend table rows (trend.TrendRow.status).
+ROW_STATUS_DE = {"new": "neu", "resolved": "behoben", "changed": "geändert"}
 
 # Report label for Finding.cost_source (column "Quelle" when actual costs were requested).
 COST_SOURCE_LABELS = {"actual": "Ist-Kosten", "retail": "Listenpreis", None: "ohne Preis"}
@@ -81,6 +85,13 @@ def eur(value: float | None, currency: str = "EUR") -> str:
     return f"{value:,.2f} {currency_symbol(currency)}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def signed_eur(value: float, currency: str = "EUR") -> str:
+    """Amount with its sign, for changes: '+28,91 €', '-9,97 €', '0,00 €'."""
+    rounded = round(value, 2)
+    sign = "+" if rounded > 0 else "-" if rounded < 0 else ""
+    return sign + eur(abs(rounded), currency)
+
+
 def render(
     findings: list[Finding],
     scope: str,
@@ -94,6 +105,7 @@ def render(
     cleanup: list[Finding] | None = None,
     cost_source: str = "retail",
     cost_period: CostPeriod | None = None,
+    trend: Trend | None = None,
 ) -> str:
     env = Environment(
         loader=PackageLoader("waste_finder", "templates"),
@@ -102,6 +114,7 @@ def render(
         lstrip_blocks=True,
     )
     env.filters["eur"] = partial(eur, currency=currency)
+    env.filters["signed_eur"] = partial(signed_eur, currency=currency)
     ordered = sorted(findings, key=lambda f: f.savings_eur or 0, reverse=True)
     free = cleanup_order(cleanup or [])
     return env.get_template(f"report.{fmt}.j2").render(
@@ -120,4 +133,8 @@ def render(
         actual=cost_source == "actual",
         cost_period=cost_period.label() if cost_period else "",
         source_labels=COST_SOURCE_LABELS,
+        trend=trend,
+        trend_rows=trend.rows() if trend else [],
+        trend_labels=ROW_STATUS_DE,
+        cost_source_name=cost_source,
     )

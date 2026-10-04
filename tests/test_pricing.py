@@ -231,3 +231,15 @@ def test_downgrade_without_hdd_price_is_unpriced_not_full_cost():
 def test_downgrade_of_unpriced_disk():
     [f] = price_findings([make("premium_disk_deallocated_vm", "Premium_LRS", size_gb=1000)], demo_fetcher())
     assert f.monthly_cost_eur is None and "no price for P30 LRS" in f.price_note
+
+
+@pytest.mark.parametrize("rule", ["orphaned_nic", "unattached_nsg", "empty_resource_group"])
+def test_hygiene_findings_are_free(rule):
+    [f] = price_findings([make(rule, "")], demo_fetcher())
+    assert (f.monthly_cost_eur, f.savings_eur, f.severity, f.is_free) == (0.0, 0.0, "info", True)
+    assert f.price_note == "no charge for this resource type"
+
+
+def test_only_zero_cost_is_free():
+    assert not make("stopped_vm", "x", monthly_cost_eur=None).is_free
+    assert not make("premium_disk_deallocated_vm", "x", monthly_cost_eur=1.0, monthly_savings_eur=0.0).is_free

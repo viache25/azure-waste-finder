@@ -1,0 +1,13 @@
+// Resource groups without any resource. Groups managed by a service (managedBy set, e.g. AKS node groups)
+// are skipped. Resource Graph has no anti-join, so count resources per group with a left outer join.
+ResourceContainers
+| where type =~ 'microsoft.resources/subscriptions/resourcegroups'
+| where isempty(managedBy)
+| extend rgKey = tolower(id)
+| join kind=leftouter (
+    Resources
+    | extend rgKey = tolower(strcat('/subscriptions/', subscriptionId, '/resourceGroups/', resourceGroup))
+    | summarize resources = count() by rgKey
+  ) on rgKey
+| where coalesce(resources, 0) == 0
+| project id, name, resourceGroup = name, location, tags

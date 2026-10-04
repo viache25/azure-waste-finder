@@ -1,3 +1,5 @@
+import pytest
+
 from waste_finder.cli import main
 from waste_finder.models import Finding
 from waste_finder.report import eur, render, summarize
@@ -27,7 +29,7 @@ def test_demo_run_writes_both_reports(tmp_path, capsys):
     md = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "pro Monat" in md and "Demo-Daten" in md
     assert (tmp_path / "report.html").exists()
-    assert "16 findings" in capsys.readouterr().out
+    assert "15 findings" in capsys.readouterr().out
 
 
 def test_real_run_needs_subscription(monkeypatch):
@@ -78,3 +80,34 @@ def test_cost_note_only_when_cost_and_savings_differ():
         [f, Finding("unattached_disk", "b", "b", "rg", "we", "x", monthly_cost_eur=50.0, monthly_savings_eur=20.0)]
     )
     assert (s.monthly_cost_eur, s.monthly_eur) == (60.0, 30.0)
+
+
+def test_report_has_free_cleanup_section_outside_the_total(tmp_path, capsys):
+    assert main(["--demo", "--out-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "6 free clean-up finding(s), not in the total:" in out and "free  info" in out
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "## Aufräumen (kostenlos)" in md and "Dazu 6 kostenlose Ressource(n) zum Aufräumen" in md
+    cleanup = md[md.index("## Aufräumen (kostenlos)") : md.index("## Warum kostet das Geld?")]
+    for name in ("awf-idle-lb", "web-old-nsg", "build-agent-01-nic", "rg-poc-2024"):
+        assert f"`{name}`" in cleanup
+    assert "az group delete --name rg-poc-2024 --subscription 11111111-1111-1111-1111-111111111111" in cleanup
+    assert "`web-old-nsg`" not in md[: md.index("## Aufräumen (kostenlos)")]  # not among the paid findings
+    why = md[md.index("## Warum kostet das Geld?") :]
+    assert "Leere Ressourcengruppe" not in why  # free rules explain themselves in the clean-up section
+    html = (tmp_path / "report.html").read_text(encoding="utf-8")
+    assert '<h2 id="aufraeumen">Aufräumen (kostenlos)</h2>' in html and "<code>rg-migration-temp</code>" in html
+
+
+def test_cleanup_is_not_dropped_by_the_savings_threshold(tmp_path, capsys):
+    assert main(["--demo", "--out-dir", str(tmp_path), "--min-savings", "5"]) == 0
+    out = capsys.readouterr().out
+    assert "6 free clean-up finding(s)" in out
+    # Below 5 €: two public IPs (3,36), web-old-vm-osdisk (3,27), awf-orphaned-disk and awf-old-snapshot (1,41).
+    assert "10 findings" in out and "5 below the threshold" in out
+
+
+@pytest.mark.parametrize("fmt", ["md", "html"])
+def test_no_cleanup_section_without_free_findings(fmt):
+    f = Finding("stopped_vm", "a", "a", "rg", "we", "x", monthly_cost_eur=1.0)
+    assert "Aufräumen (kostenlos)" not in render([f], "sub", fmt)

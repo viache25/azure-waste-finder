@@ -63,7 +63,8 @@ def test_demo_json_matches_schema(demo_reports):
     assert data["schema_version"] == SCHEMA_VERSION
     assert data["demo"] is True and data["currency"] == "EUR"
     assert data["summary"]["monthly_savings"] == 509.03 and data["summary"]["ignored"] == 1
-    assert len(data["findings"]) == data["summary"]["count"] == 16
+    assert len(data["findings"]) == data["summary"]["count"] == 15
+    assert len(data["cleanup"]) == data["summary"]["cleanup"] == 6
     savings = [f["monthly_savings"] for f in data["findings"]]
     assert savings == sorted(savings, reverse=True)
 
@@ -105,13 +106,14 @@ def test_sarif_structure(demo_reports):
     rules = run["tool"]["driver"]["rules"]
     assert [r["id"] for r in rules] == list(REGISTRY)
     assert all(r["helpUri"].startswith("https://learn.microsoft.com/") for r in rules)
-    assert len(run["results"]) == 16
+    assert len(run["results"]) == 21  # 15 findings + 6 free clean-up findings
     for result in run["results"]:
         assert rules[result["ruleIndex"]]["id"] == result["ruleId"]
         location = result["locations"][0]
         resource_id = location["logicalLocations"][0]["fullyQualifiedName"]
         assert location["physicalLocation"]["artifactLocation"]["uri"] == resource_id.lstrip("/")
-        assert result["properties"]["command"].endswith(resource_id)
+        command = result["properties"]["command"]
+        assert command.endswith(resource_id) or f"--name {resource_id.rsplit('/', 1)[-1]} " in command
     vm = next(r for r in run["results"] if "build-agent-02" in r["message"]["text"])
     assert vm["level"] == "error" and "148,19 €" in vm["message"]["text"]
 
@@ -193,6 +195,7 @@ def test_schema_still_accepts_1_0_reports_without_age():
     data["schema_version"] = "1.0"
     for f in data["findings"]:
         del f["age_days"], f["quantity"]
+    del data["cleanup"], data["summary"]["cleanup"]
     jsonschema.validate(data, SCHEMA)
 
 
@@ -213,8 +216,39 @@ def test_quantity_needs_a_unit_to_be_shown():
 
 def test_load_balancer_without_rules_is_a_free_info_finding(demo_reports):
     data = json.loads((demo_reports / "report.json").read_text(encoding="utf-8"))
-    lb = next(f for f in data["findings"] if f["name"] == "awf-idle-lb")
+    assert all(f["name"] != "awf-idle-lb" for f in data["findings"])
+    lb = next(f for f in data["cleanup"] if f["name"] == "awf-idle-lb")
     assert (lb["severity"], lb["monthly_cost"], lb["quantity"]) == ("info", 0.0, 0)
     sarif = json.loads((demo_reports / "report.sarif").read_text(encoding="utf-8"))
     result = next(r for r in sarif["runs"][0]["results"] if "awf-idle-lb" in r["message"]["text"])
     assert result["level"] == "note"
+
+
+def test_cleanup_findings_in_exports_but_not_in_the_total(demo_reports):
+    data = json.loads((demo_reports / "report.json").read_text(encoding="utf-8"))
+    cleanup = data["cleanup"]
+    assert {f["rule"] for f in cleanup} == {
+        "orphaned_nic",
+        "unattached_nsg",
+        "empty_resource_group",
+        "idle_load_balancer",
+    }
+    assert all(f["monthly_cost"] == 0.0 and f["severity"] == "info" for f in cleanup)
+    assert [f["subscription_id"][:4] for f in cleanup] == ["0000"] * 4 + ["1111"] * 2  # sorted by subscription
+    assert data["summary"]["monthly_savings"] == round(sum(f["monthly_savings"] for f in data["findings"]), 2)
+    rows = list(csv.DictReader(io.StringIO((demo_reports / "report.csv").read_text("utf-8"))))
+    assert len(rows) == 21 and [r["name"] for r in rows[-6:]] == [f["name"] for f in cleanup]
+    sarif = json.loads((demo_reports / "report.sarif").read_text(encoding="utf-8"))
+    nsg = next(r for r in sarif["runs"][0]["results"] if r["ruleId"] == "unattached_nsg")
+    assert nsg["level"] == "note"
+
+
+def test_summary_mentions_cleanup():
+    fs = findings()
+    text = render_summary(fs, summarize(fs, cleanup=3), RunInfo("x"))
+    assert "3 kostenlos aufzuräumen" in text
+
+
+def test_exports_without_cleanup_argument():
+    data = json.loads(render_json(findings(), summarize(findings()), RunInfo("x")))
+    assert data["cleanup"] == [] and data["summary"]["cleanup"] == 0

@@ -1,0 +1,11 @@
+// Network interfaces not attached to a VM and not used by a private endpoint, a private link service or a
+// PaaS workload. They cost nothing, but they hold a private IP and clutter the subscription.
+Resources
+| where type =~ 'microsoft.network/networkinterfaces'
+| where isempty(tostring(properties.virtualMachine.id))
+    and isempty(tostring(properties.privateEndpoint.id))
+    and isempty(tostring(properties.privateLinkService.id))
+    and coalesce(array_length(properties.hostedWorkloads), 0) == 0
+| project id, name, resourceGroup, location,
+          privateIp = tostring(properties.ipConfigurations[0].properties.privateIPAddress),
+          tags

@@ -17,5 +17,8 @@ output "expected_findings" {
     old_snapshot           = one(azurerm_snapshot.old[*].name)
     empty_app_service_plan = one(azurerm_service_plan.empty[*].name)
     idle_load_balancer     = one(azurerm_lb.idle[*].name)
+    orphaned_nic           = one(azurerm_network_interface.orphaned[*].name)
+    unattached_nsg         = one(azurerm_network_security_group.unattached[*].name)
+    empty_resource_group   = one(azurerm_resource_group.empty[*].name)
   }
 }

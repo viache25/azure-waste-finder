@@ -1,0 +1,7 @@
+// Network security groups associated with neither a subnet nor a network interface. Free, but their
+// rules are easy to mistake for protection that is in place.
+Resources
+| where type =~ 'microsoft.network/networksecuritygroups'
+| where coalesce(array_length(properties.subnets), 0) == 0
+    and coalesce(array_length(properties.networkInterfaces), 0) == 0
+| project id, name, resourceGroup, location, tags

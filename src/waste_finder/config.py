@@ -193,6 +193,11 @@ def split_ignored(findings: list[Finding], exclude: Iterable[str] = ()) -> tuple
     return kept, ignored
 
 
+def split_free(findings: list[Finding]) -> tuple[list[Finding], list[Finding]]:
+    """-> (findings that cost money or are unpriced, free clean-up findings priced at exactly 0)."""
+    return [f for f in findings if not f.is_free], [f for f in findings if f.is_free]
+
+
 def split_below_threshold(findings: list[Finding], min_savings: float) -> tuple[list[Finding], list[Finding]]:
     """-> (findings at or above the threshold, findings below it). Unpriced findings are always kept."""
 

@@ -45,6 +45,7 @@
     {% if summary.unpriced %}<br>{{ summary.unpriced }} Ressource(n) ohne Preis, nicht in der Summe enthalten.{% endif %}
     {% if summary.ignored %}<br>{{ summary.ignored }} Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).{% endif %}
     {% if summary.below_threshold %}<br>{{ summary.below_threshold }} Ressource(n) unter der Schwelle von {{ min_savings | eur }} pro Monat nicht aufgeführt.{% endif %}
+    {% if summary.cleanup %}<br>Dazu {{ summary.cleanup }} kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).{% endif %}
   </div>
 
   {% for group in groups %}
@@ -73,9 +74,35 @@
   <p>Keine verschwendeten Ressourcen gefunden.</p>
   {% endfor %}
 
+  {% if cleanup %}
+  <h2 id="aufraeumen">Aufräumen (kostenlos)</h2>
+  <p>Diese Ressourcen kosten nichts und zählen nicht zur Summe oben. Aufräumen schafft Übersicht und vermeidet Fehler.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Subscription</th><th>Ressourcengruppe</th><th>Empfehlung</th></tr></thead>
+    <tbody>
+    {% for f in cleanup %}
+      <tr>
+        <td><code>{{ f.name }}</code></td>
+        <td>{{ rules[f.rule].title_de }}</td>
+        <td><code>{{ f.subscription_id or "unbekannt" }}</code></td>
+        <td>{{ f.resource_group }}</td>
+        <td>{{ rules[f.rule].action_de }}<br><code class="cmd">{{ rules[f.rule].remediation_command(f.resource_id) }}</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <ul>
+  {% for rule_id in cleanup | map(attribute="rule") | unique %}
+    <li><strong>{{ rules[rule_id].title_de }}:</strong> {{ rules[rule_id].why_de }} (<a href="{{ rules[rule_id].docs_url }}">Doku</a>)</li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+
   <h2>Warum kostet das Geld?</h2>
   <ul>
-  {% for rule in rules.values() %}
+  {% for rule in rules.values() if rule.pricing != "free" %}
     <li><strong>{{ rule.title_de }}:</strong> {{ rule.why_de }} (<a href="{{ rule.docs_url }}">Doku</a>)</li>
   {% endfor %}
   </ul>

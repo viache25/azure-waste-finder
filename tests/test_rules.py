@@ -29,6 +29,9 @@ def test_find_waste_maps_rows_to_findings():
         "idle_nat_gateway": 1,
         "idle_load_balancer": 2,
         "premium_disk_deallocated_vm": 3,  # no lookback given: all
+        "orphaned_nic": 2,
+        "unattached_nsg": 1,
+        "empty_resource_group": 2,
     }
 
     disk = next(f for f in by_rule["unattached_disk"] if f.name == "awf-orphaned-disk")
@@ -116,3 +119,17 @@ def test_premium_disk_query_uses_reserved_state_and_ownership_time():
     assert "'Premium_LRS'" in q and "'StandardSSD_LRS'" in q and "PremiumV2" not in q
     findings = find_waste(demo_runner(), ["premium_disk_deallocated_vm"], {"premium_disk_deallocated_vm": 30})
     assert sorted(f.name for f in findings) == ["sap-test-db-data", "web-old-vm-osdisk"]
+
+
+def test_hygiene_queries():
+    nic = load_query("orphaned_nic")
+    assert "microsoft.network/networkinterfaces" in nic and "virtualMachine.id" in nic
+    assert "privateEndpoint.id" in nic and "privateLinkService.id" in nic and "hostedWorkloads" in nic
+    nsg = load_query("unattached_nsg")
+    assert "microsoft.network/networksecuritygroups" in nsg
+    assert "properties.subnets" in nsg and "properties.networkInterfaces" in nsg
+    rg = load_query("empty_resource_group")
+    assert "ResourceContainers" in rg and "join kind=leftouter" in rg
+    assert "isempty(managedBy)" in rg
+    groups = find_waste(demo_runner(), ["empty_resource_group"])
+    assert {g.name: g.subscription_id[:4] for g in groups} == {"rg-poc-2024": "1111", "rg-migration-temp": "0000"}

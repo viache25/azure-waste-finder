@@ -240,6 +240,11 @@ def _load_balancer_price(finding: Finding, fetch: PriceFetcher) -> Price:
     return Price(hourly * HOURS_PER_MONTH, f"{note}, × {HOURS_PER_MONTH} h ({rules} rules)")
 
 
+def _free(finding: Finding, fetch: PriceFetcher) -> Price:
+    """Hygiene findings: the resource type has no charge of its own."""
+    return Price(0.0, "no charge for this resource type")
+
+
 # strategy name (registry.Rule.pricing) -> function
 STRATEGIES: dict[str, PricingStrategy] = {
     "vm_compute": _vm_price,
@@ -250,6 +255,7 @@ STRATEGIES: dict[str, PricingStrategy] = {
     "nat_gateway": _nat_gateway_price,
     "load_balancer": _load_balancer_price,
     "disk_downgrade": _disk_downgrade_price,
+    "free": _free,
 }
 
 

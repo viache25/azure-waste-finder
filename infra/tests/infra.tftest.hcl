@@ -144,6 +144,11 @@ run "extra_waste_off_by_default" {
     condition     = length(azurerm_lb.idle) == 0 && length(azurerm_lb_backend_address_pool.idle) == 0 && output.expected_findings.idle_load_balancer == null
     error_message = "The idle load balancer must be opt-in (enable_extra_waste)."
   }
+
+  assert {
+    condition     = length(azurerm_network_interface.orphaned) + length(azurerm_network_security_group.unattached) + length(azurerm_resource_group.empty) == 0
+    error_message = "The clean-up resources (orphaned NIC, unattached NSG, empty resource group) must be opt-in."
+  }
 }
 
 run "extra_waste_snapshot" {
@@ -251,5 +256,44 @@ run "extra_waste_idle_load_balancer" {
   assert {
     condition     = output.expected_findings.idle_load_balancer == "test-idle-lb"
     error_message = "expected_findings must list the load balancer when extra waste is enabled."
+  }
+}
+
+run "extra_waste_cleanup_findings" {
+  command = plan
+
+  variables {
+    enable_extra_waste = true
+  }
+
+  assert {
+    condition     = length(azurerm_network_interface.orphaned) == 1 && alltrue([for ip in azurerm_network_interface.orphaned[0].ip_configuration : ip.public_ip_address_id == null])
+    error_message = "enable_extra_waste = true must create one orphaned NIC, without a public IP."
+  }
+
+  assert {
+    condition     = length(azurerm_network_security_group.unattached) == 1
+    error_message = "enable_extra_waste = true must create the unattached NSG."
+  }
+
+  assert {
+    condition     = length(azurerm_resource_group.empty) == 1 && azurerm_resource_group.empty[0].name == "test-empty-rg"
+    error_message = "enable_extra_waste = true must create the empty resource group."
+  }
+
+  assert {
+    condition = alltrue([
+      for tags in [
+        azurerm_network_interface.orphaned[0].tags,
+        azurerm_network_security_group.unattached[0].tags,
+        azurerm_resource_group.empty[0].tags,
+      ] : tags == tomap({ project = "azure-waste-finder", purpose = "waste-demo", managed_by = "terraform" })
+    ])
+    error_message = "The clean-up resources must carry the project, purpose and managed_by tags."
+  }
+
+  assert {
+    condition     = output.expected_findings.orphaned_nic == "test-orphaned-nic" && output.expected_findings.unattached_nsg == "test-unattached-nsg" && output.expected_findings.empty_resource_group == "test-empty-rg"
+    error_message = "expected_findings must list the clean-up resources when extra waste is enabled."
   }
 }

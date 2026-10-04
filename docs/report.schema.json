@@ -36,11 +36,17 @@
         "unpriced": { "description": "Findings without a price, not part of the total.", "type": "integer", "minimum": 0 },
         "ignored": { "description": "Resources skipped by the ignore tag or an exclude pattern; not in `findings`.", "type": "integer", "minimum": 0 },
         "below_threshold": { "description": "Findings saving less than `min_monthly_savings`; not in `findings`.", "type": "integer", "minimum": 0 },
-        "min_monthly_savings": { "type": "number", "minimum": 0 }
+        "min_monthly_savings": { "type": "number", "minimum": 0 },
+        "cleanup": { "description": "Free clean-up findings (cost 0), listed in `cleanup`, not part of the total. Since 1.3.", "type": "integer", "minimum": 0 }
       }
     },
     "findings": {
       "description": "Sorted by `monthly_savings`, highest first.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "cleanup": {
+      "description": "Free clean-up findings (priced at 0, severity `info`), e.g. orphaned NICs, unattached NSGs, empty resource groups. Not part of `summary.monthly_savings` and not subject to `min_monthly_savings`. Sorted by subscription, resource group, rule, name. Since 1.3.",
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }
     }

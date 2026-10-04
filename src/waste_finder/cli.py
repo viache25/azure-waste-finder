@@ -22,12 +22,13 @@ from waste_finder.config import (
     parse_snapshot_min_age,
     resolve_settings,
     split_below_threshold,
+    split_free,
     split_ignored,
 )
 from waste_finder.export import EXPORTERS, FORMATS, RunInfo, render_summary
 from waste_finder.pricing import price_findings, retail_api_fetcher
 from waste_finder.registry import REGISTRY
-from waste_finder.report import eur, render, summarize
+from waste_finder.report import cleanup_order, eur, render, summarize
 from waste_finder.rules import Scope, find_waste, resource_graph_runner
 
 EXIT_OK, EXIT_USAGE, EXIT_OVER_THRESHOLD = 0, 2, 3
@@ -151,15 +152,17 @@ def main(argv: list[str] | None = None) -> int:
         fetch = retail_api_fetcher(cache_file=Path(f".cache/prices-{currency.lower()}.json"), currency=currency)
 
     findings, ignored = split_ignored(find_waste(run_query, settings.rules, settings.min_age_days), settings.exclude)
-    findings, below = split_below_threshold(price_findings(findings, fetch), settings.min_monthly_savings)
+    # Free clean-up findings get their own section, outside the total and the savings threshold.
+    findings, cleanup = split_free(price_findings(findings, fetch))
+    findings, below = split_below_threshold(findings, settings.min_monthly_savings)
 
     run = RunInfo(scope_label, currency, args.demo, settings.min_monthly_savings)
-    s = summarize(findings, ignored=len(ignored), below_threshold=len(below))
+    s = summarize(findings, ignored=len(ignored), below_threshold=len(below), cleanup=len(cleanup))
     args.out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for fmt in settings.formats:
         if fmt in EXPORTERS:
-            text = EXPORTERS[fmt](findings, s, run)
+            text = EXPORTERS[fmt](findings, s, run, cleanup)
         else:
             text = render(
                 findings,
@@ -170,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
                 below_threshold=len(below),
                 min_savings=settings.min_monthly_savings,
                 currency=currency,
+                cleanup=cleanup,
             )
         path = args.out_dir / f"report.{fmt}"
         path.write_text(text, encoding="utf-8")
@@ -185,6 +189,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {len(below)} below the threshold of {eur(settings.min_monthly_savings, currency)} per month")
     for f in sorted(findings, key=lambda f: f.savings_eur or 0, reverse=True):
         print(f"  {eur(f.savings_eur, currency):>12}  {f.severity:<6}  {REGISTRY[f.rule].title_en:<32} {f.name}")
+    if cleanup:
+        print(f"  {len(cleanup)} free clean-up finding(s), not in the total:")
+        for f in cleanup_order(cleanup):
+            print(f"  {'free':>12}  {f.severity:<6}  {REGISTRY[f.rule].title_en:<32} {f.name}")
     print(f"Report: {', '.join(written)}")
     if settings.fail_over is not None and s.monthly_eur > settings.fail_over:
         print(

@@ -32,7 +32,8 @@ def test_rule_is_fully_described(rule):
     assert rule.severity in SEVERITIES
     assert all([rule.title_de, rule.title_en, rule.why_de, rule.action_de])
     assert rule.docs_url.startswith("https://learn.microsoft.com/")
-    assert rule.command.startswith("az ") and "{id}" in rule.command
+    assert rule.command.startswith("az ") and ("{id}" in rule.command or "{name}" in rule.command)
+    assert rule.remediation_command("/subscriptions/s/resourceGroups/rg").startswith("az ")
 
 
 def test_registry_keys_match_rule_ids():
@@ -48,3 +49,14 @@ def test_no_unused_kql_files_or_strategies():
 def test_remediation_command_inserts_resource_id():
     cmd = REGISTRY["stopped_vm"].remediation_command("/subscriptions/x/vm1")
     assert cmd == "az vm deallocate --ids /subscriptions/x/vm1"
+
+
+def test_remediation_command_fills_name_and_subscription():
+    cmd = REGISTRY["empty_resource_group"].remediation_command("/subscriptions/sub-1/resourceGroups/rg-old")
+    assert cmd == "az group delete --name rg-old --subscription sub-1"
+    assert REGISTRY["empty_resource_group"].remediation_command("rg-x") == "az group delete --name rg-x --subscription "
+
+
+def test_free_rules_are_info():
+    for rule in REGISTRY.values():
+        assert (rule.pricing == "free") <= (rule.severity == "info")

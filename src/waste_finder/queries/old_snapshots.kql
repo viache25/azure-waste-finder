@@ -1,0 +1,12 @@
+// Managed disk snapshots with their age. They are billed per GB and month for as long as they exist,
+// even after the source disk is gone. rules.py keeps only snapshots at least snapshot_min_age_days old.
+Resources
+| where type =~ 'microsoft.compute/snapshots'
+| extend timeCreated = todatetime(properties.timeCreated)
+| project id, name, resourceGroup, location,
+          sku = tostring(sku.name),
+          sizeGb = toint(properties.diskSizeGB),
+          incremental = tobool(properties.incremental),
+          timeCreated,
+          ageDays = toint((now() - timeCreated) / 1d),
+          tags

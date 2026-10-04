@@ -75,3 +75,44 @@ def test_public_ip_without_price(sku, note):
     [f] = price_findings([make("orphaned_public_ip", sku)], demo_fetcher())
     assert f.monthly_cost_eur is None
     assert note in f.price_note
+
+
+@pytest.mark.parametrize(
+    ("sku", "size", "expected"),
+    [
+        ("Standard_LRS", 32, round(0.044 * 32, 2)),  # Standard HDD snapshot meter
+        ("Standard_ZRS", 512, round(0.044 * 512, 2)),
+        ("Premium_LRS", 128, round(0.1276 * 128, 2)),  # Premium SSD snapshot meter
+    ],
+)
+def test_snapshot_price_is_gb_month_times_provisioned_size(sku, size, expected):
+    [f] = price_findings([make("old_snapshot", sku, size_gb=size)], demo_fetcher())
+    assert f.monthly_cost_eur == expected
+    assert "upper bound" in f.price_note and f"× {size} GB" in f.price_note
+
+
+@pytest.mark.parametrize(
+    ("sku", "size", "note"),
+    [
+        ("UltraSSD_LRS", 100, "snapshot SKU UltraSSD_LRS not supported"),
+        ("Standard", 100, "not supported"),
+        ("Standard_LRS", None, "size unknown"),
+        ("Premium_ZRS", 100, "no snapshot price for Premium SSD Managed Disks, ZRS"),
+    ],
+)
+def test_snapshot_without_price(sku, size, note):
+    [f] = price_findings([make("old_snapshot", sku, size_gb=size)], demo_fetcher())
+    assert f.monthly_cost_eur is None
+    assert note in f.price_note
+
+
+def test_snapshot_price_filter_names_product_and_meter():
+    filters = []
+
+    def fetch(odata_filter):
+        filters.append(odata_filter)
+        return []
+
+    price_findings([make("old_snapshot", "Premium_LRS", size_gb=10)], fetch)
+    assert "productName eq 'Premium SSD Managed Disks'" in filters[0]
+    assert "skuName eq 'Snapshots LRS'" in filters[0] and "armRegionName eq 'westeurope'" in filters[0]

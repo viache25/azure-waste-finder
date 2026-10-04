@@ -23,6 +23,7 @@ currency = "chf"
 
 [thresholds]
 min_monthly_savings = 5
+snapshot_min_age_days = 90
 """
 
 
@@ -44,7 +45,8 @@ def test_defaults_without_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     s = resolve_settings(None, {})
     assert s == Settings(rules=tuple(REGISTRY), exclude=(), min_monthly_savings=0.0, currency="EUR")
-    assert (s.formats, s.fail_over) == (("md", "html"), None)
+    assert (s.formats, s.fail_over, s.snapshot_min_age_days) == (("md", "html"), None, 30)
+    assert s.min_age_days == {"old_snapshot": 30}
     assert s.source == "defaults"
 
 
@@ -54,6 +56,7 @@ def test_load_full_config(config_file):
         "exclude": ("*/resourceGroups/rg-test/*",),
         "currency": "CHF",
         "min_monthly_savings": 5.0,
+        "snapshot_min_age_days": 90,
     }
 
 
@@ -91,6 +94,9 @@ def test_cli_values_override_file_values(config_file):
         ('formats = ["pdf"]', "unknown format"),
         ("formats = []", "no output format"),
         ("[thresholds]\nfail_over = -5", "fail_over must be"),
+        ("[thresholds]\nsnapshot_min_age_days = -1", "snapshot_min_age_days must be"),
+        ("[thresholds]\nsnapshot_min_age_days = 7.5", "whole number of days"),
+        ("[thresholds]\nsnapshot_min_age_days = true", "whole number of days"),
         ("rules = [", "cannot read"),
     ],
 )
@@ -181,6 +187,7 @@ def test_demo_keeps_eur_prices(config_file, tmp_path, capsys):
         ["--config", "missing.toml"],
         ["--format", "md,pdf"],
         ["--fail-over", "-1"],
+        ["--snapshot-min-age", "-1"],
     ],
 )
 def test_cli_rejects_bad_settings(tmp_path, capsys, args):
@@ -201,3 +208,31 @@ def test_report_groups_by_subscription_most_expensive_first():
     md = render([small, big], "aaa, bbb", "md")
     assert md.index("Subscription `bbb`") < md.index("Subscription `aaa`")
     assert "Ca. **9,00 € pro Monat** durch 1 Ressource(n)." in md
+
+
+def test_snapshot_min_age_flag_overrides_file(config_file):
+    path = config_file("[thresholds]\nsnapshot_min_age_days = 90")
+    assert resolve_settings(path, {"snapshot_min_age_days": None}).snapshot_min_age_days == 90
+    s = resolve_settings(path, {"snapshot_min_age_days": 0})
+    assert s.snapshot_min_age_days == 0 and s.min_age_days == {"old_snapshot": 0}
+
+
+@pytest.mark.parametrize(
+    ("flags", "count", "reported"),
+    [
+        ([], 3, False),  # default 30 days: erp-db-nightly (6 days) is too young
+        (["--snapshot-min-age", "0"], 4, True),
+        (["--snapshot-min-age", "100"], 2, False),  # awf-old-snapshot (45 days) drops out too
+    ],
+)
+def test_cli_snapshot_min_age(tmp_path, capsys, flags, count, reported):
+    assert main(["--demo", "--rules", "old_snapshot", "--out-dir", str(tmp_path), *flags]) == 0
+    assert f"{count} findings" in capsys.readouterr().out
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert ("erp-db-nightly" in md) == reported
+
+
+def test_cli_snapshot_min_age_from_config(config_file, tmp_path, capsys):
+    path = config_file('rules = ["old_snapshot"]\n[thresholds]\nsnapshot_min_age_days = 0')
+    assert main(["--demo", "--config", str(path), "--out-dir", str(tmp_path / "out")]) == 0
+    assert "4 findings" in capsys.readouterr().out

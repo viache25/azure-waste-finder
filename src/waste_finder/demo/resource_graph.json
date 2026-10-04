@@ -1,5 +1,5 @@
 {
-  "_comment": "Two fictional demo subscriptions (Contoso). Used by --demo and the tests. pip-dns-reserved is tagged waste-finder:ignore=true.",
+  "_comment": "Two fictional demo subscriptions (Contoso). Used by --demo and the tests. pip-dns-reserved is tagged waste-finder:ignore=true. ageDays is what Resource Graph computes at query time; erp-db-nightly is younger than the default 30 days and is not reported.",
   "unattached_disk": [
     {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/disks/erp-db-old-data", "name": "erp-db-old-data", "resourceGroup": "rg-legacy-erp", "location": "westeurope", "sku": "Premium_LRS", "sizeGb": 512, "tags": {"owner": "erp-team"}},
     {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/disks/awf-orphaned-disk", "name": "awf-orphaned-disk", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "Standard_LRS", "sizeGb": 32, "tags": {"project": "azure-waste-finder"}}
@@ -12,5 +12,11 @@
     {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/publicIPAddresses/awf-orphaned-pip", "name": "awf-orphaned-pip", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "Standard", "allocation": "Static", "tags": {"project": "azure-waste-finder"}},
     {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/publicIPAddresses/pip-old-gateway", "name": "pip-old-gateway", "resourceGroup": "rg-web-old", "location": "westeurope", "sku": "Standard", "allocation": "Static", "tags": {}},
     {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/publicIPAddresses/pip-dns-reserved", "name": "pip-dns-reserved", "resourceGroup": "rg-web-old", "location": "westeurope", "sku": "Standard", "allocation": "Static", "tags": {"waste-finder:ignore": "true", "reason": "IP is whitelisted by a partner"}}
+  ],
+  "old_snapshot": [
+    {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/snapshots/erp-db-before-migration", "name": "erp-db-before-migration", "resourceGroup": "rg-legacy-erp", "location": "westeurope", "sku": "Standard_LRS", "sizeGb": 512, "incremental": false, "timeCreated": "2025-11-14T09:12:00Z", "ageDays": 324, "tags": {"owner": "erp-team"}},
+    {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/snapshots/erp-db-nightly", "name": "erp-db-nightly", "resourceGroup": "rg-legacy-erp", "location": "westeurope", "sku": "Standard_ZRS", "sizeGb": 512, "incremental": true, "timeCreated": "2026-09-28T02:00:00Z", "ageDays": 6, "tags": {"owner": "erp-team"}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/snapshots/web-os-before-upgrade", "name": "web-os-before-upgrade", "resourceGroup": "rg-web-old", "location": "westeurope", "sku": "Premium_LRS", "sizeGb": 128, "incremental": false, "timeCreated": "2026-06-02T16:40:00Z", "ageDays": 124, "tags": {}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/snapshots/awf-old-snapshot", "name": "awf-old-snapshot", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "Standard_LRS", "sizeGb": 32, "incremental": true, "timeCreated": "2026-08-20T10:00:00Z", "ageDays": 45, "tags": {"project": "azure-waste-finder"}}
   ]
 }

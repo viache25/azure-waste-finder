@@ -13,5 +13,7 @@ output "expected_findings" {
     unattached_disk = azurerm_managed_disk.orphaned.name
     stopped_vm      = azurerm_linux_virtual_machine.stopped.name
     orphaned_ip     = azurerm_public_ip.orphaned.name
+    # Opt-in (enable_extra_waste); null when disabled.
+    old_snapshot = one(azurerm_snapshot.old[*].name)
   }
 }

@@ -39,3 +39,9 @@ variable "alert_email" {
   type        = string
   default     = null
 }
+
+variable "enable_extra_waste" {
+  description = "Also create the opt-in waste resources for the newer rules (e.g. an old disk snapshot). See the README for their cost per hour."
+  type        = bool
+  default     = false
+}

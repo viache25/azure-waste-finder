@@ -121,3 +121,64 @@ run "budget_disabled" {
     error_message = "enable_budget = false must not create a budget."
   }
 }
+
+run "extra_waste_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(azurerm_snapshot.old) == 0
+    error_message = "Extra waste resources must be opt-in (enable_extra_waste defaults to false)."
+  }
+
+  assert {
+    condition     = output.expected_findings.old_snapshot == null
+    error_message = "Without extra waste there is no snapshot to find."
+  }
+}
+
+run "extra_waste_snapshot" {
+  command = plan
+
+  variables {
+    enable_extra_waste = true
+  }
+
+  # The disk ID is only known after apply; give it a fixed value at plan time to compare against.
+  override_resource {
+    target          = azurerm_managed_disk.orphaned
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test-waste-demo-rg/providers/Microsoft.Compute/disks/test-orphaned-disk"
+    }
+  }
+
+  assert {
+    condition     = length(azurerm_snapshot.old) == 1
+    error_message = "enable_extra_waste = true must create the old snapshot."
+  }
+
+  assert {
+    condition     = azurerm_snapshot.old[0].create_option == "Copy" && azurerm_snapshot.old[0].source_uri == azurerm_managed_disk.orphaned.id
+    error_message = "The snapshot must copy the orphaned disk."
+  }
+
+  assert {
+    condition     = azurerm_snapshot.old[0].incremental_enabled
+    error_message = "The snapshot must be incremental (billed by changed data only, the cheapest kind)."
+  }
+
+  assert {
+    condition     = azurerm_snapshot.old[0].public_network_access_enabled == false && azurerm_snapshot.old[0].network_access_policy == "DenyAll"
+    error_message = "The snapshot must not allow export over the internet."
+  }
+
+  assert {
+    condition     = azurerm_snapshot.old[0].tags == tomap({ project = "azure-waste-finder", purpose = "waste-demo", managed_by = "terraform" })
+    error_message = "The snapshot must carry the project, purpose and managed_by tags."
+  }
+
+  assert {
+    condition     = output.expected_findings.old_snapshot == "test-old-snapshot"
+    error_message = "expected_findings must list the snapshot when extra waste is enabled."
+  }
+}

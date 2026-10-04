@@ -22,6 +22,7 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 | Unattached managed disk | medium | Disks are billed by provisioned size, attached or not | Snapshot if needed, then `az disk delete` |
 | VM **stopped but not deallocated** | high | "Stopped" keeps the hardware reserved, so compute is still billed. Only "deallocated" stops the compute meter | `az vm deallocate` or delete |
 | Orphaned public IP | low | Standard public IPs are billed per hour even without an association | `az network public-ip delete` unless intentionally reserved |
+| Old disk snapshot | low | Snapshots are billed per GB-month for as long as they exist, even after the source disk is gone. Reported when older than 30 days (`--snapshot-min-age`); priced at the provisioned size, an upper bound because Azure bills the used size | Keep it only if it is still a needed backup, else `az snapshot delete` |
 
 Rules are data: each one is a single entry in `registry.py` (German and English title, severity, KQL file, pricing strategy, remediation text and `az` command, docs link) plus a KQL file. The report shows the severity, a docs link per rule and the exact `az` command per finding; the tool itself never runs them.
 
@@ -41,6 +42,7 @@ flowchart LR
 
 ```
 infra/                    Terraform: resource group, 5 € budget alert, 3 waste resources
+  extra-waste.tf          opt-in waste for the newer rules (enable_extra_waste = true)
   tests/*.tftest.hcl      terraform test with mocked providers (no Azure login)
 scripts/stop-vm.(ps1|sh)  stops the demo VM WITHOUT deallocating it
 src/waste_finder/
@@ -53,7 +55,7 @@ src/waste_finder/
   export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (121 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (151 tests), runs fully offline, coverage floor 95 %
 docs/report.schema.json   JSON Schema of report.json
 ```
 
@@ -104,6 +106,14 @@ terraform destroy
 
 The demo environment uses the smallest SKUs (B1s VM, 32 GB Standard HDD, one Standard IP) and costs a few cents per hour. A budget alert on the resource group e-mails you at 50 % of 5 €.
 
+**Opt-in extra waste** for the newer rules: set `enable_extra_waste = true` in `terraform.tfvars` (default `false`). Approximate list prices in West Europe:
+
+| Resource | Found by | Approx. cost |
+|---|---|---|
+| Incremental snapshot of the orphaned 32 GB disk | `old_snapshot` | at most 0.002 €/h (0.044 € per GB-month × 32 GB; the disk is empty, so in practice close to 0) |
+
+Snapshots are only reported once they are 30 days old; right after `apply`, run the finder with `--snapshot-min-age 0` to see it.
+
 If `terraform apply` says the VM size is not available, set `location` or `vm_size` in `terraform.tfvars`. If your subscription type does not support budgets, set `enable_budget = false`.
 
 ## Scope, rules and exclusions
@@ -115,6 +125,7 @@ waste-finder --management-group <mg-id>                       # all subscription
 waste-finder --rules stopped_vm,orphaned_public_ip            # only these rules
 waste-finder --exclude '*/resourceGroups/rg-sandbox/*'        # glob on the resource ID, repeatable
 waste-finder --min-savings 5                                  # leave out findings that save < 5 per month
+waste-finder --snapshot-min-age 90                            # report disk snapshots older than 90 days (default 30)
 waste-finder --currency CHF                                   # Retail API currency (default EUR)
 waste-finder --config path/to/waste-finder.toml               # default: ./waste-finder.toml if present
 waste-finder --format md,html,json,csv,sarif                  # output formats (default md,html)
@@ -126,9 +137,10 @@ waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 abov
 | `--subscription ID` | Subscription to scan; repeat for several. Default `$AZURE_SUBSCRIPTION_ID` |
 | `--all-subscriptions` | Every subscription the credential can read (Resource Graph at tenant scope) |
 | `--management-group ID` | All subscriptions below this management group |
-| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`) |
+| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`) |
 | `--exclude PATTERN` | Ignore resources whose ID matches the glob (case-insensitive); repeatable |
 | `--min-savings AMOUNT` | Leave out findings that save less per month; unpriced findings stay in |
+| `--snapshot-min-age DAYS` | `old_snapshot` reports snapshots at least this many days old (default 30; age from the snapshot's creation time) |
 | `--currency CODE` | Currency for list prices, e.g. `EUR`, `CHF`, `USD` (`--demo` always uses its EUR sample prices) |
 | `--format A,B` | Output formats: `md`, `html`, `json`, `csv`, `sarif` (default `md,html`); written as `report.<format>` |
 | `--fail-over AMOUNT` | Exit with code 3 when the monthly waste is above this amount (reports are still written) |
@@ -144,7 +156,7 @@ The three scope flags are mutually exclusive. The report groups findings by subs
 **Config file** (`waste-finder.toml`, all keys optional; unknown keys are an error). Precedence: defaults < file < CLI flags; a flag replaces the file value, including lists.
 
 ```toml
-rules = ["unattached_disk", "stopped_vm", "orphaned_public_ip"]   # default: all rules
+rules = ["unattached_disk", "stopped_vm", "old_snapshot"]   # default: all rules
 exclude = ["/subscriptions/*/resourceGroups/rg-sandbox/*"]
 currency = "EUR"
 formats = ["md", "html", "json"]   # default: md, html
@@ -152,6 +164,7 @@ formats = ["md", "html", "json"]   # default: md, html
 [thresholds]
 min_monthly_savings = 1.0
 fail_over = 100.0                  # exit code 3 when the monthly total is higher
+snapshot_min_age_days = 30         # old_snapshot: only snapshots at least this many days old
 ```
 
 ## Output formats and exit codes
@@ -159,8 +172,8 @@ fail_over = 100.0                  # exit code 3 when the monthly total is highe
 | Format | File | Use |
 |---|---|---|
 | `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription |
-| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.0`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
-| `csv` | `report.csv` | One row per finding (subscription, resource group, rule, severity, cost, savings, currency, resource ID, `az` command) for Excel |
+| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.1`; 1.1 added `age_days`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
+| `csv` | `report.csv` | One row per finding (subscription, resource group, rule, severity, age, cost, savings, currency, resource ID, `az` command) for Excel |
 | `sarif` | `report.sarif` | SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding (`high` → error, `medium` → warning, `low`/`info` → note). Azure resources are not files, so the resource ID is the alert's path; a fingerprint of rule + resource ID keeps alerts stable, so cleaning up a resource closes its alert |
 
 Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`sarif_file: reports/report.sarif`, `category: azure-waste-finder`) to see findings under Security → Code scanning.
@@ -190,7 +203,7 @@ pip install -e ".[dev]"          # pytest, pytest-cov, ruff, mypy
 pytest --cov                     # tests + coverage; fails below the floor in pyproject.toml (95 %)
 ruff check . && ruff format --check .
 mypy                             # strict on src/
-cd infra && terraform init -backend=false && terraform test   # mocked providers, no Azure login
+cd infra && terraform init -backend=false && terraform test   # mocked providers, no Azure login, Terraform >= 1.11
 tflint --init && tflint          # in infra/, config in infra/.tflint.hcl
 pip install pre-commit && pre-commit install   # ruff + terraform fmt before each commit
 pip install pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit -r /tmp/req.txt --no-deps --disable-pip
@@ -203,7 +216,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 | `lint` | `ruff check`, `ruff format --check`, `mypy` (strict) |
 | `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
 | `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
-| `terraform` | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked azurerm/tls providers: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login), `tflint` with the azurerm ruleset |
+| `terraform` | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked azurerm/tls providers: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
 `.github/workflows/codeql.yml` runs CodeQL for Python on PRs, on `main` and weekly; alerts appear under Security → Code scanning.
@@ -212,7 +225,7 @@ Dependabot opens weekly PRs for pip, GitHub Actions and Terraform providers: min
 
 ## Roadmap
 
-The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (old snapshots, empty App Service plans, idle network resources, downgrade candidates), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
+The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (empty App Service plans, idle network resources, downgrade candidates, free clean-up findings), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
 
 ## License
 

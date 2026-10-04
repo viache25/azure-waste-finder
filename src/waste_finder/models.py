@@ -19,6 +19,7 @@ class Finding:
     sku: str
     size_gb: int | None = None
     os_type: str | None = None
+    age_days: int | None = None  # days since a reference time (e.g. snapshot creation), for age-based rules
     tags: dict[str, str] = field(default_factory=dict)
     severity: Severity = "medium"
     # Amounts are in the configured currency (EUR unless `currency` is set in waste-finder.toml).

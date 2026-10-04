@@ -34,16 +34,16 @@
 <body>
 <main>
   <h1>Azure Kostencheck: Verschwendungsbericht</h1>
-  <div class="meta">Bereich <code>demo (Contoso)</code> · 2026-10-02</div>
+  <div class="meta">Bereich <code>demo (Contoso)</code> · 2026-10-04</div>
 <div class="demo"><strong>Demo-Daten:</strong> fiktive Subscriptions und Beispielpreise, keine echte Umgebung.</div>
   <div class="total">
     Sie verlieren ca.
-    <div class="big">232,08 € pro Monat</div>
-    ≈ 2.784,96 € pro Jahr durch 6 ungenutzte Ressourcen.
+    <div class="big">272,35 € pro Monat</div>
+    ≈ 3.268,20 € pro Jahr durch 9 ungenutzte Ressourcen.
 <br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).  </div>
 
   <h2>Subscription <code>11111111-1111-1111-1111-111111111111</code></h2>
-  <p>Ca. <strong>215,77 € pro Monat</strong> durch 2 Ressource(n).</p>
+  <p>Ca. <strong>238,30 € pro Monat</strong> durch 3 Ressource(n).</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
@@ -66,15 +66,33 @@
         <td class="num">67,58 €</td>
         <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/disks/erp-db-old-data</code></td>
       </tr>
+      <tr>
+        <td><code>erp-db-before-migration</code></td>
+        <td>Alter Disk-Snapshot</td>
+        <td><span class="sev sev-low">niedrig</span></td>
+        <td>rg-legacy-erp</td>
+        <td>Standard_LRS (512 GB), 324 Tage alt</td>
+        <td class="num">22,53 €</td>
+        <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/snapshots/erp-db-before-migration</code></td>
+      </tr>
     </tbody>
   </table>
   </div>
   <h2>Subscription <code>00000000-0000-0000-0000-000000000000</code></h2>
-  <p>Ca. <strong>16,31 € pro Monat</strong> durch 4 Ressource(n).</p>
+  <p>Ca. <strong>34,05 € pro Monat</strong> durch 6 Ressource(n).</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
     <tbody>
+      <tr>
+        <td><code>web-os-before-upgrade</code></td>
+        <td>Alter Disk-Snapshot</td>
+        <td><span class="sev sev-low">niedrig</span></td>
+        <td>rg-web-old</td>
+        <td>Premium_LRS (128 GB), 124 Tage alt</td>
+        <td class="num">16,33 €</td>
+        <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/snapshots/web-os-before-upgrade</code></td>
+      </tr>
       <tr>
         <td><code>awf-stopped-vm</code></td>
         <td>VM gestoppt, aber nicht dealloziert</td>
@@ -111,6 +129,15 @@
         <td class="num">1,41 €</td>
         <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/disks/awf-orphaned-disk</code></td>
       </tr>
+      <tr>
+        <td><code>awf-old-snapshot</code></td>
+        <td>Alter Disk-Snapshot</td>
+        <td><span class="sev sev-low">niedrig</span></td>
+        <td>awf-waste-demo-rg</td>
+        <td>Standard_LRS (32 GB), 45 Tage alt</td>
+        <td class="num">1,41 €</td>
+        <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/snapshots/awf-old-snapshot</code></td>
+      </tr>
     </tbody>
   </table>
   </div>
@@ -120,6 +147,7 @@
     <li><strong>Nicht angehängte Managed Disk:</strong> Disks werden nach bereitgestellter Größe abgerechnet, auch wenn keine VM sie nutzt. (<a href="https://learn.microsoft.com/azure/virtual-machines/windows/find-unattached-disks">Doku</a>)</li>
     <li><strong>VM gestoppt, aber nicht dealloziert:</strong> Im Zustand &#39;Stopped&#39; bleibt die Hardware reserviert und die Rechenleistung wird weiter verrechnet. (<a href="https://learn.microsoft.com/azure/virtual-machines/states-billing">Doku</a>)</li>
     <li><strong>Ungenutzte öffentliche IP-Adresse:</strong> Standard-IPs werden pro Stunde verrechnet, auch ohne Zuordnung. (<a href="https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses">Doku</a>)</li>
+    <li><strong>Alter Disk-Snapshot:</strong> Snapshots werden pro GB und Monat verrechnet, solange sie existieren, auch wenn die Quell-Disk längst gelöscht ist. Geschätzt mit der bereitgestellten Größe (Obergrenze; verrechnet wird die belegte Größe). (<a href="https://learn.microsoft.com/azure/virtual-machines/disks-understand-billing">Doku</a>)</li>
   </ul>
 
   <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>

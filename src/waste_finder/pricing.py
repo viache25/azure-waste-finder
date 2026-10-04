@@ -50,6 +50,10 @@ DISK_PREFIX = {"Standard": "S", "StandardSSD": "E", "Premium": "P"}
 # Standard HDD disks start at S4 (32 GB).
 MIN_TIER = {"S": 4}
 
+# Snapshot SKU (Standard_LRS, Standard_ZRS, Premium_LRS) -> Retail API product of its storage type.
+# Incremental snapshots are always stored on Standard HDD, so they carry a Standard_* SKU.
+SNAPSHOT_PRODUCTS = {"Standard": "Standard HDD Managed Disks", "Premium": "Premium SSD Managed Disks"}
+
 PUBLIC_IP_METERS = {
     "Standard": "Standard IPv4 Static Public IP",
     "Basic": "Basic IPv4 Static Public IP Address",
@@ -115,11 +119,32 @@ def _ip_price(finding: Finding, fetch: PriceFetcher) -> tuple[float | None, str]
     return price * HOURS_PER_MONTH, f"{price} €/h × {HOURS_PER_MONTH} h"
 
 
+def _snapshot_price(finding: Finding, fetch: PriceFetcher) -> tuple[float | None, str]:
+    """GB-month price of the snapshot meter × provisioned size: an upper bound, Azure bills the used size."""
+    kind, _, redundancy = finding.sku.partition("_")
+    product = SNAPSHOT_PRODUCTS.get(kind)
+    if not product or not redundancy:
+        return None, f"snapshot SKU {finding.sku} not supported"
+    if not finding.size_gb:
+        return None, "snapshot size unknown"
+    items = fetch(
+        "serviceName eq 'Storage' and priceType eq 'Consumption' "
+        f"and productName eq '{product}' and skuName eq 'Snapshots {redundancy}' "
+        f"and armRegionName eq '{finding.location}'"
+    )
+    for item in items:
+        if item.get("unitOfMeasure") == "1 GB/Month" and item.get("meterName", "").endswith("Snapshots"):
+            price = item["retailPrice"]
+            return price * finding.size_gb, f"{price} €/GB-month × {finding.size_gb} GB (provisioned size, upper bound)"
+    return None, f"no snapshot price for {product}, {redundancy}"
+
+
 # strategy name (registry.Rule.pricing) -> function
 STRATEGIES: dict[str, PricingStrategy] = {
     "vm_compute": _vm_price,
     "managed_disk": _disk_price,
     "public_ip": _ip_price,
+    "snapshot": _snapshot_price,
 }
 
 

@@ -21,7 +21,7 @@ from waste_finder.report import Summary, eur
 
 FORMATS = ("md", "html", "json", "csv", "sarif")
 DEFAULT_FORMATS = ("md", "html")
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 SARIF_LEVELS = {"high": "error", "medium": "warning", "low": "note", "info": "note"}
@@ -37,6 +37,7 @@ CSV_COLUMNS = (
     "location",
     "sku",
     "size_gb",
+    "age_days",
     "monthly_cost",
     "monthly_savings",
     "currency",
@@ -74,6 +75,7 @@ def finding_dict(f: Finding) -> dict[str, Any]:
         "sku": f.sku,
         "size_gb": f.size_gb,
         "os_type": f.os_type,
+        "age_days": f.age_days,
         "tags": f.tags,
         "monthly_cost": f.monthly_cost_eur,
         "monthly_savings": f.savings_eur,

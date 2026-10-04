@@ -9,6 +9,9 @@
     {"serviceName": "Storage", "priceType": "Consumption", "skuName": "S4 LRS", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "meterName": "S4 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 1.41},
     {"serviceName": "Storage", "priceType": "Consumption", "skuName": "S4 LRS", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "meterName": "LRS Disk Operations", "unitOfMeasure": "10K", "retailPrice": 0.0005},
     {"serviceName": "Storage", "priceType": "Consumption", "skuName": "P20 LRS", "armRegionName": "westeurope", "productName": "Premium SSD Managed Disks", "meterName": "P20 LRS Disk", "unitOfMeasure": "1/Month", "retailPrice": 67.58},
-    {"serviceName": "Virtual Network", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "IP Addresses", "skuName": "Standard", "meterName": "Standard IPv4 Static Public IP", "unitOfMeasure": "1 Hour", "retailPrice": 0.0046}
+    {"serviceName": "Virtual Network", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "IP Addresses", "skuName": "Standard", "meterName": "Standard IPv4 Static Public IP", "unitOfMeasure": "1 Hour", "retailPrice": 0.0046},
+    {"serviceName": "Storage", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "skuName": "Snapshots LRS", "meterName": "LRS Snapshots", "unitOfMeasure": "1 GB/Month", "retailPrice": 0.044},
+    {"serviceName": "Storage", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "skuName": "Snapshots ZRS", "meterName": "ZRS Snapshots", "unitOfMeasure": "1 GB/Month", "retailPrice": 0.044},
+    {"serviceName": "Storage", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Premium SSD Managed Disks", "skuName": "Snapshots LRS", "meterName": "LRS Snapshots", "unitOfMeasure": "1 GB/Month", "retailPrice": 0.1276}
   ]
 }

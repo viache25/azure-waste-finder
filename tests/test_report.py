@@ -27,7 +27,7 @@ def test_demo_run_writes_both_reports(tmp_path, capsys):
     md = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "pro Monat" in md and "Demo-Daten" in md
     assert (tmp_path / "report.html").exists()
-    assert "6 findings" in capsys.readouterr().out
+    assert "9 findings" in capsys.readouterr().out
 
 
 def test_real_run_needs_subscription(monkeypatch):

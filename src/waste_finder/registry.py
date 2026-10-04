@@ -74,5 +74,24 @@ REGISTRY: dict[str, Rule] = {
             command="az network public-ip delete --ids {id}",
             docs_url="https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses",
         ),
+        Rule(
+            id="old_snapshot",
+            title_de="Alter Disk-Snapshot",
+            title_en="Old disk snapshot",
+            severity="low",
+            query_file="old_snapshots.kql",
+            pricing="snapshot",
+            why_de=(
+                "Snapshots werden pro GB und Monat verrechnet, solange sie existieren, auch wenn die Quell-Disk "
+                "längst gelöscht ist. Geschätzt mit der bereitgestellten Größe (Obergrenze; verrechnet wird die "
+                "belegte Größe)."
+            ),
+            action_de=(
+                "Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup "
+                "mit Aufbewahrungsregel ersetzen."
+            ),
+            command="az snapshot delete --ids {id}",
+            docs_url="https://learn.microsoft.com/azure/virtual-machines/disks-understand-billing",
+        ),
     )
 }

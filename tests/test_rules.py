@@ -1,7 +1,9 @@
+import pytest
+
 from waste_finder.demo import demo_runner
 from waste_finder.models import Finding
 from waste_finder.registry import REGISTRY
-from waste_finder.rules import Scope, find_waste, load_query
+from waste_finder.rules import Scope, find_waste, is_too_young, load_query
 
 
 def test_every_rule_has_a_query():
@@ -18,7 +20,12 @@ def test_stopped_vm_query_ignores_deallocated():
 def test_find_waste_maps_rows_to_findings():
     findings = find_waste(demo_runner())
     by_rule = {r: [f for f in findings if f.rule == r] for r in REGISTRY}
-    assert {r: len(v) for r, v in by_rule.items()} == {"unattached_disk": 2, "stopped_vm": 2, "orphaned_public_ip": 3}
+    assert {r: len(v) for r, v in by_rule.items()} == {
+        "unattached_disk": 2,
+        "stopped_vm": 2,
+        "orphaned_public_ip": 3,
+        "old_snapshot": 4,  # no minimum age given: all snapshots
+    }
 
     disk = next(f for f in by_rule["unattached_disk"] if f.name == "awf-orphaned-disk")
     assert disk.sku == "Standard_LRS" and disk.size_gb == 32
@@ -50,3 +57,30 @@ def test_scope_labels():
     assert Scope(subscriptions=("a", "b")).label() == "a, b"
     assert Scope(management_group="mg-prod").label() == "Management Group mg-prod"
     assert Scope().label() == "alle lesbaren Subscriptions"
+
+
+def test_old_snapshot_query_projects_age_and_size():
+    q = load_query("old_snapshot")
+    assert "microsoft.compute/snapshots" in q
+    assert "ageDays" in q and "sizeGb" in q
+
+
+def test_snapshots_younger_than_min_age_are_not_findings():
+    findings = find_waste(demo_runner(), ["old_snapshot"], {"old_snapshot": 30})
+    assert sorted(f.name for f in findings) == ["awf-old-snapshot", "erp-db-before-migration", "web-os-before-upgrade"]
+    snapshot = next(f for f in findings if f.name == "awf-old-snapshot")
+    assert (snapshot.sku, snapshot.size_gb, snapshot.age_days) == ("Standard_LRS", 32, 45)
+
+
+@pytest.mark.parametrize(("min_age", "count"), [(0, 4), (45, 3), (46, 2), (1000, 0)])
+def test_min_age_is_inclusive(min_age, count):
+    assert len(find_waste(demo_runner(), ["old_snapshot"], {"old_snapshot": min_age})) == count
+
+
+def test_min_age_applies_only_to_its_rule_and_rows_with_an_age():
+    assert not is_too_young({"ageDays": None}, 30)
+    assert not is_too_young({}, 30)
+    assert not is_too_young({"ageDays": 5}, None)
+    assert is_too_young({"ageDays": 5}, 30)
+    findings = find_waste(demo_runner(), ["stopped_vm", "old_snapshot"], {"old_snapshot": 1000})
+    assert {f.rule for f in findings} == {"stopped_vm"}

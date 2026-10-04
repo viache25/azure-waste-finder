@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from importlib import resources
 from typing import Any, cast
@@ -31,16 +31,28 @@ def row_to_finding(rule: str, row: Row) -> Finding:
         sku=row.get("sku") or "",
         size_gb=row.get("sizeGb"),
         os_type=row.get("osType"),
+        age_days=row.get("ageDays"),
         tags=row.get("tags") or {},
         severity=REGISTRY[rule].severity,
     )
 
 
-def find_waste(run_query: QueryRunner, rules: Iterable[str] = REGISTRY) -> list[Finding]:
+def is_too_young(row: Row, min_age_days: int | None) -> bool:
+    """Age-based rules project `ageDays`; rows younger than the rule's minimum age are not waste (yet)."""
+    age = row.get("ageDays")
+    return min_age_days is not None and age is not None and age < min_age_days
+
+
+def find_waste(
+    run_query: QueryRunner, rules: Iterable[str] = REGISTRY, min_age_days: Mapping[str, int] | None = None
+) -> list[Finding]:
+    """Run each rule's query. `min_age_days` maps rule id -> minimum age in days (see Settings.min_age_days)."""
+    ages = min_age_days or {}
     findings: list[Finding] = []
     for rule in rules:
         for row in run_query(load_query(rule)):
-            findings.append(row_to_finding(rule, row))
+            if not is_too_young(row, ages.get(rule)):
+                findings.append(row_to_finding(rule, row))
     return findings
 
 

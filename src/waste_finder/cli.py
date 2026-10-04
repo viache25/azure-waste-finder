@@ -18,6 +18,7 @@ from waste_finder.config import (
     parse_formats,
     parse_min_savings,
     parse_rules,
+    parse_snapshot_min_age,
     resolve_settings,
     split_below_threshold,
     split_ignored,
@@ -70,6 +71,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Exit with code 3 when the monthly waste is above this amount",
     )
     p.add_argument(
+        "--snapshot-min-age",
+        type=int,
+        metavar="DAYS",
+        help="Report disk snapshots at least this many days old (default 30)",
+    )
+    p.add_argument(
         "--summary",
         metavar="FILE",
         help="Append a Markdown summary, e.g. $GITHUB_STEP_SUMMARY (empty value: no summary)",
@@ -104,6 +111,9 @@ def main(argv: list[str] | None = None) -> int:
                 "currency": parse_currency(args.currency) if args.currency else None,
                 "formats": parse_formats(args.format.split(",")) if args.format is not None else None,
                 "fail_over": parse_fail_over(args.fail_over) if args.fail_over is not None else None,
+                "snapshot_min_age_days": (
+                    parse_snapshot_min_age(args.snapshot_min_age) if args.snapshot_min_age is not None else None
+                ),
             },
         )
     except ConfigError as e:
@@ -130,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         scope_label, run_query = scope.label(), resource_graph_runner(scope)
         fetch = retail_api_fetcher(cache_file=Path(f".cache/prices-{currency.lower()}.json"), currency=currency)
 
-    findings, ignored = split_ignored(find_waste(run_query, settings.rules), settings.exclude)
+    findings, ignored = split_ignored(find_waste(run_query, settings.rules, settings.min_age_days), settings.exclude)
     findings, below = split_below_threshold(price_findings(findings, fetch), settings.min_monthly_savings)
 
     run = RunInfo(scope_label, currency, args.demo, settings.min_monthly_savings)

@@ -27,7 +27,7 @@ python -m waste_finder --demo --format md,html,json,csv,sarif --fail-over 100 --
 cd infra
 terraform fmt -check -recursive
 terraform init -backend=false && terraform validate
-terraform test                          # infra/tests/*.tftest.hcl, mocked providers, needs Terraform >= 1.7
+terraform test                          # infra/tests/*.tftest.hcl, mocked providers, needs Terraform >= 1.11 (override_during)
 tflint --init && tflint                 # config in infra/.tflint.hcl (azurerm ruleset)
 checkov -d . --framework terraform      # optional locally (pip install checkov); CI runs it report-only
 ```
@@ -38,6 +38,8 @@ Windows: activate the venv with `.venv\Scripts\activate`; `scripts/stop-vm.ps1` 
 
 ```
 infra/                    Terraform: RG, 5 € budget alert, 3 waste resources (disk, VM, public IP)
+  extra-waste.tf          opt-in waste for the newer rules, count = var.enable_extra_waste ? 1 : 0 (D3):
+                          incremental snapshot of the orphaned disk
   tests/*.tftest.hcl      terraform test, mock_provider "azurerm" + "tls"
   .tflint.hcl             tflint: recommended terraform preset + azurerm ruleset
 scripts/stop-vm.(ps1|sh)  `az vm stop` WITHOUT deallocate (Terraform can't leave a VM "stopped")
@@ -46,11 +48,11 @@ src/waste_finder/
                           why/action text, az command template, docs link); the single source of truth for rules
   models.py               Finding dataclass (severity, monthly_cost_eur, monthly_savings_eur), HOURS_PER_MONTH = 730
   queries/*.kql           one Resource Graph query per rule
-  rules.py                load_query(rule) via the registry, find_waste(run_query, rules) -> list[Finding];
+  rules.py                load_query(rule) via the registry, find_waste(run_query, rules, min_age_days) -> list[Finding];
                           Scope (subscriptions | management group | all readable) + resource_graph_runner(scope)
   config.py               Settings from waste-finder.toml (tomllib) overridden by CLI flags; ignore tag
                           `waste-finder:ignore=true` + exclude globs on the resource ID; min_monthly_savings threshold;
-                          formats, fail_over
+                          formats, fail_over, snapshot_min_age_days (-> Settings.min_age_days)
   pricing.py              STRATEGIES (strategy name -> pricing fn), Retail Prices API fetcher with 24 h JSON cache
   report.py, templates/   Jinja2 Markdown + HTML report, German
   export.py               FORMATS; JSON (schema_version, docs/report.schema.json), CSV, SARIF 2.1.0 exporters;
@@ -68,7 +70,7 @@ Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now
 
 ### How to add a rule
 
-1. `src/waste_finder/queries/<name>.kql`: project at least `id, name, resourceGroup, location, sku, tags` (plus `sizeGb` / `osType` if pricing needs them).
+1. `src/waste_finder/queries/<name>.kql`: project at least `id, name, resourceGroup, location, sku, tags` (plus `sizeGb` / `osType` if pricing needs them, `ageDays` for an age-based rule plus its entry in `Settings.min_age_days`).
 2. `Rule(...)` entry in `REGISTRY` in `registry.py`: id, `title_de`, `title_en`, `severity` (`high|medium|low|info`), `query_file`, `pricing`, `why_de`, `action_de`, `command` (`az ... --ids {id}`), `docs_url` (learn.microsoft.com).
 3. Pricing: reuse a strategy name from `STRATEGIES` in `pricing.py` or add a new function there (filters in `field eq 'value' and ...` shape so `demo_fetcher` can evaluate them).
 4. Demo data: rows under the rule id in `demo/resource_graph.json`, matching price items in `demo/prices.json`.
@@ -86,6 +88,8 @@ The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titl
 - **Settings precedence**: defaults < `waste-finder.toml` < CLI flags; a flag replaces a list from the file. New settings go into `config.Settings`, `load_config` (unknown keys are rejected) and a CLI flag; tests in `tests/test_config.py`.
 - **JSON output** is a contract (later runs read it for trends): changing a field means bumping `export.SCHEMA_VERSION` (minor = new optional field, major = rename/removal) and updating `docs/report.schema.json`; the schema has `additionalProperties: false`, so the tests catch drift.
 - **Subscription grouping** uses `Finding.subscription_id`, parsed from the resource ID; demo data has two subscriptions and one resource tagged `waste-finder:ignore=true`.
+- **Age-based rules** (`old_snapshot`): the KQL projects `ageDays`, computed by Resource Graph with `now()`, so demo rows carry a fixed `ageDays` and stay stable over time. `find_waste` drops rows younger than `Settings.min_age_days[rule]` before they become findings (they are not counted as ignored). `Finding.age_days` shows up in the report and in JSON/CSV (`age_days`, schema 1.1).
+- **Snapshots** are priced per GB-month of the snapshot meter (`Snapshots LRS|ZRS` of the Standard HDD or Premium SSD product) × provisioned size: an upper bound, Azure bills the used size and Resource Graph does not expose it.
 - **"Stopped" ≠ "deallocated"**: the VM rule matches `PowerState/stopped` only; deallocated VMs don't bill compute.
 - **Lint/types**: code passes `ruff` and `mypy --strict` (config in `pyproject.toml`) without blanket ignores; Resource Graph rows are `rules.Row`, price items `pricing.PriceItem`, pricing functions `pricing.PricingStrategy` (both `dict[str, Any]`).
 - **Language**: report text German; code, CLI help, README, docs, commits in English.
@@ -93,6 +97,6 @@ The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titl
 
 ## CI
 
-`.github/workflows/ci.yml` runs on PRs and pushes to `main`: job `lint` (`ruff check`, `ruff format --check`, `mypy`), job `audit` (`pip-audit` on `pip freeze --exclude-editable` of the installed `.[dev]` env, so the runner's own pip/setuptools are not audited; fails on any known vulnerability, fix by raising the lower bound in `pyproject.toml`), job `python` (pytest with coverage on 3.11 / 3.12 / 3.13, floor = `fail_under` in `pyproject.toml`; JUnit results published by `dorny/test-reporter`, skipped for Dependabot/fork PRs whose token cannot create check runs; artifacts `coverage-<version>` and, from 3.12, `demo-report` with all five formats and the summary on the run page) job `terraform` (`fmt -check`, `init -backend=false`, `validate`, `terraform test`, `tflint`) and job `config-scan` (Checkov on `infra/`, `--soft-fail`, SARIF uploaded to the Security tab, upload skipped for Dependabot/fork PRs). Intentional Checkov findings are skipped inline (`#checkov:skip=ID:reason`) in the resource block; fix real findings instead of skipping them. New Terraform resources get assertions in `infra/tests/`. Coverage floor per D7: measured value rounded down to 5, never below 80; raise it when coverage grows, never lower it to get green. `.github/workflows/codeql.yml` runs CodeQL (Python, default query suite, `build-mode: none`) on PRs, `main` and weekly; results go to the Security tab. Vulnerability reporting and scope: `SECURITY.md`.
+`.github/workflows/ci.yml` runs on PRs and pushes to `main`: job `lint` (`ruff check`, `ruff format --check`, `mypy`), job `audit` (`pip-audit` on `pip freeze --exclude-editable` of the installed `.[dev]` env, so the runner's own pip/setuptools are not audited; fails on any known vulnerability, fix by raising the lower bound in `pyproject.toml`), job `python` (pytest with coverage on 3.11 / 3.12 / 3.13, floor = `fail_under` in `pyproject.toml`; JUnit results published by `dorny/test-reporter`, skipped for Dependabot/fork PRs whose token cannot create check runs; artifacts `coverage-<version>` and, from 3.12, `demo-report` with all five formats and the summary on the run page) job `terraform` (`fmt -check`, `init -backend=false`, `validate`, `terraform test`, `tflint`) and job `config-scan` (Checkov on `infra/`, `--soft-fail`, SARIF uploaded to the Security tab, upload skipped for Dependabot/fork PRs). Intentional Checkov findings are skipped inline (`#checkov:skip=ID:reason`) in the resource block; fix real findings instead of skipping them. New Terraform resources get assertions in `infra/tests/`; when an assertion needs a value that is only known after apply (an ID), use `override_resource` with `override_during = plan` instead of `command = apply` (mocked IDs fail azurerm's ID validation). Coverage floor per D7: measured value rounded down to 5, never below 80; raise it when coverage grows, never lower it to get green. `.github/workflows/codeql.yml` runs CodeQL (Python, default query suite, `build-mode: none`) on PRs, `main` and weekly; results go to the Security tab. Vulnerability reporting and scope: `SECURITY.md`.
 
 Dependabot (`.github/dependabot.yml`) opens weekly PRs for pip, GitHub Actions and Terraform providers: minor + patch bumps grouped into one PR per ecosystem, each major bump as its own PR. Merge policy: squash-merge a Dependabot PR once CI is green; a major bump that fails CI is fixed on its branch if the fix is small and in scope, otherwise closed with a one-line reason; if a merged bump makes a statement in CLAUDE.md, README.md or the Stack line of issue #1 stale, fix it.

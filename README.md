@@ -111,7 +111,7 @@ Or straight from the release URL: `pip install https://github.com/viache25/azure
 
 ## Container image
 
-`ghcr.io/viache25/azure-waste-finder` is built from the [Dockerfile](Dockerfile) (multi-stage on `python:3.12-slim`, runs as the non-root user `finder`, uid 10001, entrypoint `waste-finder`). Every green CI run on `main` pushes it with two tags: the short commit SHA and `latest`.
+`ghcr.io/viache25/azure-waste-finder` is built from the [Dockerfile](Dockerfile) (multi-stage on `python:3.12-slim`, runs as the non-root user `finder`, uid 10001, entrypoint `waste-finder`, working directory `/work`). Every green CI run on `main` pushes it with two tags: the short commit SHA and `latest`.
 
 ```bash
 docker run --rm ghcr.io/viache25/azure-waste-finder --version
@@ -119,7 +119,7 @@ docker run --rm ghcr.io/viache25/azure-waste-finder --demo --format md,html,json
 
 # keep the reports: mount ./reports (run as your own uid so the files belong to you)
 mkdir -p reports
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/reports:/home/finder/reports" \
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/reports:/work/reports" \
   ghcr.io/viache25/azure-waste-finder --demo --format md,html,json
 ```
 

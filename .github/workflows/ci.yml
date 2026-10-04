@@ -69,7 +69,7 @@ jobs:
         run: |
           docker run --rm azure-waste-finder:ci --version
           mkdir -p out
-          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/out:/home/finder/reports" azure-waste-finder:ci \
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/out:/work/reports" azure-waste-finder:ci \
             --demo --format md,html,json
           test -s out/report.json && test -s out/report.html
 

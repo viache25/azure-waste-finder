@@ -46,7 +46,8 @@ Windows: activate the venv with `.venv\Scripts\activate`; `scripts/stop-vm.ps1` 
 ```
 Dockerfile                multi-stage python:3.12-slim (digest-pinned): build stage builds the wheel with
                           SETUPTOOLS_SCM_PRETEND_VERSION=$VERSION (.git is not in the context) into /opt/venv,
-                          runtime stage copies the venv, user finder (10001), ENTRYPOINT ["waste-finder"]
+                          runtime stage copies the venv, user finder (10001), WORKDIR /work (mode 1777, so
+                          `--user $(id -u)` can write too; reports/ and .cache/ land there), ENTRYPOINT ["waste-finder"]
 .dockerignore             allowlist: pyproject.toml, README.md, LICENSE, src/
 infra/                    Terraform: RG, 5 € budget alert, 3 waste resources (disk, VM, public IP)
   extra-waste.tf          opt-in waste for the newer rules, count = var.enable_extra_waste ? 1 : 0 (D3):

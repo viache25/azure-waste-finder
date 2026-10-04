@@ -23,13 +23,15 @@ LABEL org.opencontainers.image.title="azure-waste-finder" \
       org.opencontainers.image.source="https://github.com/viache25/azure-waste-finder" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
-RUN useradd --create-home --uid 10001 --user-group finder
+# /work holds reports/ and the price cache .cache/. Mode 1777 (like /tmp), so it also works with
+# `docker run --user "$(id -u):$(id -g)"`, which writes mounted reports as the host user.
+RUN useradd --create-home --uid 10001 --user-group finder \
+    && install --directory --owner finder --group finder --mode 1777 /work
 COPY --from=build /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 USER 10001:10001
-# Reports go to ./reports and the price cache to ./.cache, i.e. below /home/finder.
-WORKDIR /home/finder
+WORKDIR /work
 ENTRYPOINT ["waste-finder"]
 CMD ["--help"]

@@ -29,3 +29,16 @@ updates:
     groups:
       terraform-minor-and-patch:
         update-types: [minor, patch]
+
+  # Base image in the Dockerfile (pinned by digest): new digests for python:3.12-slim
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Stay on the Python minor version of the image; moving to a newer one is a deliberate change.
+      - dependency-name: python
+        update-types: [version-update:semver-minor, version-update:semver-major]

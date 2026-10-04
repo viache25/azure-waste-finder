@@ -1,0 +1,84 @@
+name: CD
+
+# D9: runs after the CI workflow finished on main and only when that run succeeded; builds exactly the commit
+# CI tested (workflow_run.head_sha). Pushes ghcr.io/viache25/azure-waste-finder:<short sha> and :latest with
+# GITHUB_TOKEN, then scans the image with Trivy (report-only, SARIF to the Security tab).
+# workflow_run changes only take effect on main: a PR cannot exercise this file.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/viache25/azure-waste-finder
+
+jobs:
+  image:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+      security-events: write # upload the Trivy SARIF
+    env:
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0 # setuptools-scm reads the version from the tags
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Tags and version
+        id: meta
+        run: |
+          pip install setuptools-scm==10.3.4
+          echo "short_sha=${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "version=$(python -m setuptools_scm)" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: >-
+          docker build
+          --build-arg VERSION=${{ steps.meta.outputs.version }}
+          --label org.opencontainers.image.revision=$HEAD_SHA
+          --tag $IMAGE:${{ steps.meta.outputs.short_sha }}
+          --tag $IMAGE:latest
+          .
+      - name: Smoke test
+        run: |
+          docker run --rm $IMAGE:${{ steps.meta.outputs.short_sha }} --version
+          docker run --rm $IMAGE:${{ steps.meta.outputs.short_sha }} --demo --format json
+      - name: Log in to GHCR
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push
+        run: |
+          docker push $IMAGE:${{ steps.meta.outputs.short_sha }}
+          docker push $IMAGE:latest
+      # Report-only: findings go to the Security tab (category trivy-image); the job never fails on them,
+      # and a Trivy download hiccup does not fail the run either.
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ steps.meta.outputs.short_sha }}
+          format: sarif
+          output: trivy-image.sarif
+          ignore-unfixed: true
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@v4
+        if: ${{ !cancelled() && hashFiles('trivy-image.sarif') != '' }}
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+          sha: ${{ github.event.workflow_run.head_sha }}
+          ref: refs/heads/main

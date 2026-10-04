@@ -57,6 +57,22 @@ jobs:
           /tmp/wheel-env/bin/waste-finder --version
           /tmp/wheel-env/bin/waste-finder --demo --format md,json --out-dir /tmp/wheel-demo
 
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Built, not pushed: cd.yml pushes to GHCR after CI on main is green.
+      - run: docker build --build-arg VERSION=0.0.0+ci --tag azure-waste-finder:ci .
+      - name: Runs as non-root
+        run: test "$(docker run --rm --entrypoint id azure-waste-finder:ci -u)" = "10001"
+      - name: Demo in the container
+        run: |
+          docker run --rm azure-waste-finder:ci --version
+          mkdir -p out
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/out:/home/finder/reports" azure-waste-finder:ci \
+            --demo --format md,html,json
+          test -s out/report.json && test -s out/report.html
+
   python:
     runs-on: ubuntu-latest
     permissions:

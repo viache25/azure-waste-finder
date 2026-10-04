@@ -33,5 +33,6 @@ unless you prefer to stay anonymous.
 | CodeQL (Python) | `.github/workflows/codeql.yml`, on PRs, `main` and weekly; results in the Security tab |
 | `pip-audit` on runtime and dev dependencies | `audit` job in `.github/workflows/ci.yml`, fails on known vulnerabilities |
 | Checkov on `infra/` | `config-scan` job in `.github/workflows/ci.yml`, report-only SARIF in the Security tab |
-| Dependency updates | Dependabot, weekly, for pip, GitHub Actions and Terraform providers |
+| Dependency updates | Dependabot, weekly, for pip, GitHub Actions, Terraform providers and the Docker base image |
+| Trivy image scan | `.github/workflows/cd.yml`, every image pushed to GHCR, report-only SARIF in the Security tab (category `trivy-image`) |
 | Release artifacts | `.github/workflows/release.yml` tests the built wheel before it is attached to a GitHub Release; PyPI publishing uses trusted publishing (no stored token) |

@@ -1,0 +1,8 @@
+# Allowlist: the image build needs only the package source and its metadata files.
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+src/**/__pycache__
+src/*.egg-info

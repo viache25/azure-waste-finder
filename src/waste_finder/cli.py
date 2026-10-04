@@ -11,6 +11,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from waste_finder import __version__
 from waste_finder.config import (
     COST_SOURCES,
     IGNORE_TAG,
@@ -55,6 +56,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             "Exit codes: 0 ok, 2 usage or config error, 3 monthly waste above --fail-over."
         ),
     )
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     scope = p.add_mutually_exclusive_group()
     scope.add_argument(
         "--subscription",

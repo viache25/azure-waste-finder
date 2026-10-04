@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/viache25/azure-waste-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/viache25/azure-waste-finder/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/viache25/azure-waste-finder/actions/workflows/codeql.yml/badge.svg)](https://github.com/viache25/azure-waste-finder/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/viache25/azure-waste-finder)](https://github.com/viache25/azure-waste-finder/releases/latest)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -70,7 +71,7 @@ src/waste_finder/
   cli.py                  python -m waste_finder
   demo/                   fictional subscriptions, sample prices, Cost Management answers and an earlier
                           report.json (so the demo report shows a trend) for --demo and tests
-tests/                    pytest (299 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (302 tests), runs fully offline, coverage floor 95 %
   fixtures/               recorded-format API responses (Cost Management)
 docs/report.schema.json   JSON Schema of report.json
 ```
@@ -92,6 +93,19 @@ pip install -e ".[dev]"
 python -m waste_finder --demo
 pytest
 ```
+
+## Install from release
+
+Each release on the [Releases page](https://github.com/viache25/azure-waste-finder/releases) has a wheel and an sdist, built and tested by `release.yml`:
+
+```bash
+gh release download --repo viache25/azure-waste-finder --pattern '*.whl'   # latest release
+pip install azure_waste_finder-*.whl            # or: pipx install azure_waste_finder-*.whl
+waste-finder --version
+waste-finder --demo
+```
+
+Or straight from the release URL: `pip install https://github.com/viache25/azure-waste-finder/releases/download/v0.2.0/azure_waste_finder-0.2.0-py3-none-any.whl`.
 
 ## Full run against a real subscription
 
@@ -173,6 +187,7 @@ waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 abov
 | `--config PATH` | Config file; without it `./waste-finder.toml` is used when it exists |
 | `--out-dir DIR` | Where the `report.<format>` files go (default `reports/`) |
 | `--demo` | Built-in fake data, no Azure access |
+| `--version` | Print the version (from the git tag, via setuptools-scm) and exit |
 
 The three scope flags are mutually exclusive. The report groups findings by subscription, with a subtotal for each.
 
@@ -265,6 +280,7 @@ cd infra && terraform init -backend=false && terraform test   # mocked providers
 tflint --init && tflint          # in infra/, config in infra/.tflint.hcl
 pip install pre-commit && pre-commit install   # ruff + terraform fmt before each commit
 pip install pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit -r /tmp/req.txt --no-deps --disable-pip
+pip install build twine && python -m build && twine check dist/*   # sdist + wheel, as in release.yml
 ```
 
 CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
@@ -273,11 +289,22 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 |---|---|
 | `lint` | `ruff check`, `ruff format --check`, `mypy` (strict) |
 | `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
+| `package` | builds sdist + wheel like a release (`python -m build`, `twine check --strict`) and runs `--version` and the demo from the installed wheel outside the source tree |
 | `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
 | `terraform` | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked azurerm/tls providers: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
 `.github/workflows/codeql.yml` runs CodeQL for Python on PRs, on `main` and weekly; alerts appear under Security → Code scanning.
+
+### Releases
+
+The version comes from git tags via **setuptools-scm**: tag `v0.2.0` builds `0.2.0`, commits after it build `0.2.1.devN+g<sha>`. `waste-finder --version`, the JSON report (`tool.version`) and SARIF show it. To release, tag `main` and push the tag:
+
+```bash
+git tag -a v0.3.0 -m "v0.3.0" && git push origin v0.3.0
+```
+
+`.github/workflows/release.yml` then builds sdist + wheel (checks that the version equals the tag, `twine check --strict`), installs the wheel on Python 3.11 / 3.12 / 3.13 and runs the whole test suite against it with `src/` removed, and creates a GitHub Release with generated notes and both files attached (tags with a `-`, e.g. `v0.3.0-rc1`, become pre-releases). A `pypi` job publishes to PyPI with trusted publishing (OIDC, no API token); it is prepared but only runs when the repo variable `PYPI_PUBLISH` is `true`. One-time setup: on PyPI add a pending trusted publisher (project `azure-waste-finder`, owner `viache25`, repository `azure-waste-finder`, workflow `release.yml`, environment `pypi`), create the GitHub environment `pypi`, then `gh variable set PYPI_PUBLISH --body true`.
 
 Dependabot opens weekly PRs for pip, GitHub Actions and Terraform providers: minor and patch bumps grouped into one PR per ecosystem, major bumps as separate PRs. They are merged when CI is green.
 

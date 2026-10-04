@@ -35,6 +35,28 @@ jobs:
       - run: pip install pip-audit==2.10.1
       - run: pip-audit -r audit-requirements.txt --no-deps --disable-pip --progress-spinner off
 
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # setuptools-scm derives the version from the latest tag
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # The same build as release.yml, so a broken package shows up before a tag is pushed.
+      - run: pip install build==1.6.1 twine==7.0.0
+      - run: python -m build
+      - run: twine check --strict dist/*
+      # The wheel alone, outside the source tree, must run the demo (KQL, templates and demo data included).
+      - name: Demo from the installed wheel
+        run: |
+          python -m venv /tmp/wheel-env
+          /tmp/wheel-env/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/wheel-env/bin/waste-finder --version
+          /tmp/wheel-env/bin/waste-finder --demo --format md,json --out-dir /tmp/wheel-demo
+
   python:
     runs-on: ubuntu-latest
     permissions:

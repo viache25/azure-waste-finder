@@ -2,7 +2,8 @@
 
 ## Supported versions
 
-Only the latest commit on `main` is supported. There are no maintained release branches.
+Only the latest release and the latest commit on `main` are supported. There are no maintained release branches;
+fixes ship in the next release.
 
 ## Reporting a vulnerability
 
@@ -15,7 +16,8 @@ unless you prefer to stay anonymous.
 
 ## Scope and design
 
-- The CLI is **read-only** against Azure: it runs Resource Graph queries and reads the public Retail Prices API.
+- The CLI is **read-only** against Azure: it runs Resource Graph queries, reads the public Retail Prices API and,
+  with `--cost-source actual`, queries Cost Management.
   It never creates, changes or deletes resources. A code path that writes to Azure is a bug and in scope.
 - Authentication is `DefaultAzureCredential` only (e.g. `az login`). No keys, secrets or tokens belong in the code,
   tests, fixtures or workflows; CI runs without any Azure credentials.
@@ -32,3 +34,4 @@ unless you prefer to stay anonymous.
 | `pip-audit` on runtime and dev dependencies | `audit` job in `.github/workflows/ci.yml`, fails on known vulnerabilities |
 | Checkov on `infra/` | `config-scan` job in `.github/workflows/ci.yml`, report-only SARIF in the Security tab |
 | Dependency updates | Dependabot, weekly, for pip, GitHub Actions and Terraform providers |
+| Release artifacts | `.github/workflows/release.yml` tests the built wheel before it is attached to a GitHub Release; PyPI publishing uses trusted publishing (no stored token) |

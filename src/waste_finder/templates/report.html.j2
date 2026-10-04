@@ -59,7 +59,7 @@
         <td>{{ rules[f.rule].title_de }}</td>
         <td><span class="sev sev-{{ f.severity }}">{{ severities[f.severity] }}</span></td>
         <td>{{ f.resource_group }}</td>
-        <td>{{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %}{% if f.age_days is not none %}, {{ f.age_days }} Tage alt{% endif %}</td>
+        <td>{{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %}{% if f.age_days is not none %}, {{ f.age_days }} Tage alt{% endif %}{% if f.quantity is not none and rules[f.rule].quantity_unit_de %}, {{ f.quantity }} {{ rules[f.rule].quantity_unit_de }}{% endif %}</td>
         <td class="num">{{ f.monthly_cost_eur | eur }}</td>
         <td>{{ rules[f.rule].action_de }}<br><code class="cmd">{{ rules[f.rule].remediation_command(f.resource_id) }}</code></td>
       </tr>

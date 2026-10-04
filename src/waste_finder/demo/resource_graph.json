@@ -18,5 +18,9 @@
     {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/snapshots/erp-db-nightly", "name": "erp-db-nightly", "resourceGroup": "rg-legacy-erp", "location": "westeurope", "sku": "Standard_ZRS", "sizeGb": 512, "incremental": true, "timeCreated": "2026-09-28T02:00:00Z", "ageDays": 6, "tags": {"owner": "erp-team"}},
     {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/snapshots/web-os-before-upgrade", "name": "web-os-before-upgrade", "resourceGroup": "rg-web-old", "location": "westeurope", "sku": "Premium_LRS", "sizeGb": 128, "incremental": false, "timeCreated": "2026-06-02T16:40:00Z", "ageDays": 124, "tags": {}},
     {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/snapshots/awf-old-snapshot", "name": "awf-old-snapshot", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "Standard_LRS", "sizeGb": 32, "incremental": true, "timeCreated": "2026-08-20T10:00:00Z", "ageDays": 45, "tags": {"project": "azure-waste-finder"}}
+  ],
+  "empty_app_service_plan": [
+    {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-intranet/providers/Microsoft.Web/serverfarms/asp-intranet-legacy", "name": "asp-intranet-legacy", "resourceGroup": "rg-intranet", "location": "westeurope", "sku": "S1", "tier": "Standard", "osType": "Windows", "quantity": 2, "tags": {"owner": "intranet-team"}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Web/serverfarms/awf-empty-plan", "name": "awf-empty-plan", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "B1", "tier": "Basic", "osType": "Linux", "quantity": 1, "tags": {"project": "azure-waste-finder"}}
   ]
 }

@@ -14,6 +14,7 @@ output "expected_findings" {
     stopped_vm      = azurerm_linux_virtual_machine.stopped.name
     orphaned_ip     = azurerm_public_ip.orphaned.name
     # Opt-in (enable_extra_waste); null when disabled.
-    old_snapshot = one(azurerm_snapshot.old[*].name)
+    old_snapshot           = one(azurerm_snapshot.old[*].name)
+    empty_app_service_plan = one(azurerm_service_plan.empty[*].name)
   }
 }

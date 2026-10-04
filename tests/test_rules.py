@@ -25,6 +25,7 @@ def test_find_waste_maps_rows_to_findings():
         "stopped_vm": 2,
         "orphaned_public_ip": 3,
         "old_snapshot": 4,  # no minimum age given: all snapshots
+        "empty_app_service_plan": 2,
     }
 
     disk = next(f for f in by_rule["unattached_disk"] if f.name == "awf-orphaned-disk")
@@ -84,3 +85,12 @@ def test_min_age_applies_only_to_its_rule_and_rows_with_an_age():
     assert is_too_young({"ageDays": 5}, 30)
     findings = find_waste(demo_runner(), ["stopped_vm", "old_snapshot"], {"old_snapshot": 1000})
     assert {f.rule for f in findings} == {"stopped_vm"}
+
+
+def test_empty_app_service_plan_query_skips_free_and_consumption_tiers():
+    q = load_query("empty_app_service_plan")
+    assert "microsoft.web/serverfarms" in q and "numberOfSites" in q
+    for tier in ("Free", "Shared", "Dynamic", "FlexConsumption"):
+        assert f"'{tier}'" in q
+    plan = next(f for f in find_waste(demo_runner(), ["empty_app_service_plan"]) if f.name == "asp-intranet-legacy")
+    assert (plan.sku, plan.os_type, plan.quantity) == ("S1", "Windows", 2)

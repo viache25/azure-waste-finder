@@ -69,6 +69,7 @@
         "size_gb": { "type": ["integer", "null"] },
         "os_type": { "type": ["string", "null"] },
         "age_days": { "description": "Age in days for age-based rules (e.g. days since a snapshot was created), else null. Since 1.1.", "type": ["integer", "null"], "minimum": 0 },
+        "quantity": { "description": "Billed units where the price depends on them (e.g. App Service plan instances), else null. Since 1.2.", "type": ["integer", "null"], "minimum": 0 },
         "tags": { "type": "object", "additionalProperties": { "type": "string" } },
         "monthly_cost": { "description": "What the resource costs now; null if no price was found.", "$ref": "#/$defs/amount" },
         "monthly_savings": { "description": "What acting on the finding saves; equals `monthly_cost` unless the action is a downgrade.", "$ref": "#/$defs/amount" },

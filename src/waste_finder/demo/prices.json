@@ -12,6 +12,12 @@
     {"serviceName": "Virtual Network", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "IP Addresses", "skuName": "Standard", "meterName": "Standard IPv4 Static Public IP", "unitOfMeasure": "1 Hour", "retailPrice": 0.0046},
     {"serviceName": "Storage", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "skuName": "Snapshots LRS", "meterName": "LRS Snapshots", "unitOfMeasure": "1 GB/Month", "retailPrice": 0.044},
     {"serviceName": "Storage", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Standard HDD Managed Disks", "skuName": "Snapshots ZRS", "meterName": "ZRS Snapshots", "unitOfMeasure": "1 GB/Month", "retailPrice": 0.044},
-    {"serviceName": "Storage", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Premium SSD Managed Disks", "skuName": "Snapshots LRS", "meterName": "LRS Snapshots", "unitOfMeasure": "1 GB/Month", "retailPrice": 0.1276}
+    {"serviceName": "Storage", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Premium SSD Managed Disks", "skuName": "Snapshots LRS", "meterName": "LRS Snapshots", "unitOfMeasure": "1 GB/Month", "retailPrice": 0.1276},
+    {"serviceName": "Azure App Service", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Azure App Service Basic Plan - Linux", "skuName": "B1", "meterName": "B1", "unitOfMeasure": "1 Hour", "retailPrice": 0.0158},
+    {"serviceName": "Azure App Service", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Azure App Service Basic Plan", "skuName": "B1", "meterName": "B1 App", "unitOfMeasure": "1 Hour", "retailPrice": 0.066},
+    {"serviceName": "Azure App Service", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Azure App Service Standard Plan", "skuName": "S1", "meterName": "S1 App", "unitOfMeasure": "1 Hour", "retailPrice": 0.088},
+    {"serviceName": "Azure App Service", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Azure App Service Standard Plan - Linux", "skuName": "S1", "meterName": "S1 App", "unitOfMeasure": "1 Hour", "retailPrice": 0.0836},
+    {"serviceName": "Azure App Service", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Azure App Service Premium v3 Plan - Linux", "skuName": "P1 v3", "meterName": "P1 v3 App", "unitOfMeasure": "1 Hour", "retailPrice": 0.1566},
+    {"serviceName": "Azure App Service", "priceType": "Consumption", "armRegionName": "westeurope", "productName": "Azure App Service SSL Connections", "skuName": "SNI SSL", "meterName": "SNI SSL Connection", "unitOfMeasure": "1/Month", "retailPrice": 7.9197}
   ]
 }

@@ -20,6 +20,7 @@ class Finding:
     size_gb: int | None = None
     os_type: str | None = None
     age_days: int | None = None  # days since a reference time (e.g. snapshot creation), for age-based rules
+    quantity: int | None = None  # billed units where the price depends on them, e.g. App Service plan instances
     tags: dict[str, str] = field(default_factory=dict)
     severity: Severity = "medium"
     # Amounts are in the configured currency (EUR unless `currency` is set in waste-finder.toml).

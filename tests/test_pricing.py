@@ -116,3 +116,26 @@ def test_snapshot_price_filter_names_product_and_meter():
     price_findings([make("old_snapshot", "Premium_LRS", size_gb=10)], fetch)
     assert "productName eq 'Premium SSD Managed Disks'" in filters[0]
     assert "skuName eq 'Snapshots LRS'" in filters[0] and "armRegionName eq 'westeurope'" in filters[0]
+
+
+@pytest.mark.parametrize(
+    ("sku", "os_type", "instances", "expected"),
+    [
+        ("B1", "Linux", 1, round(0.0158 * 730, 2)),
+        ("B1", "Windows", 1, round(0.066 * 730, 2)),  # same SKU, Windows plan product
+        ("S1", "Windows", 2, round(0.088 * 730 * 2, 2)),  # every instance bills
+        ("P1v3", "Linux", 1, round(0.1566 * 730, 2)),  # ARM 'P1v3' = Retail 'P1 v3'
+        ("B1", "Linux", None, round(0.0158 * 730, 2)),  # unknown capacity: at least one instance
+    ],
+)
+def test_app_service_plan_price(sku, os_type, instances, expected):
+    [f] = price_findings([make("empty_app_service_plan", sku, os_type=os_type, quantity=instances)], demo_fetcher())
+    assert f.monthly_cost_eur == expected
+    assert f"× {instances or 1} instance(s)" in f.price_note
+
+
+@pytest.mark.parametrize(("sku", "os_type"), [("EP1", "Windows"), ("P1v3", "Windows"), ("SNISSL", "Windows")])
+def test_app_service_plan_without_price(sku, os_type):
+    [f] = price_findings([make("empty_app_service_plan", sku, os_type=os_type, quantity=1)], demo_fetcher())
+    assert f.monthly_cost_eur is None
+    assert f"no App Service plan price for {sku} (Windows)" in f.price_note

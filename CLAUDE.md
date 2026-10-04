@@ -39,14 +39,15 @@ Windows: activate the venv with `.venv\Scripts\activate`; `scripts/stop-vm.ps1` 
 ```
 infra/                    Terraform: RG, 5 € budget alert, 3 waste resources (disk, VM, public IP)
   extra-waste.tf          opt-in waste for the newer rules, count = var.enable_extra_waste ? 1 : 0 (D3):
-                          incremental snapshot of the orphaned disk
+                          incremental snapshot of the orphaned disk, empty B1 Linux App Service plan
   tests/*.tftest.hcl      terraform test, mock_provider "azurerm" + "tls"
   .tflint.hcl             tflint: recommended terraform preset + azurerm ruleset
 scripts/stop-vm.(ps1|sh)  `az vm stop` WITHOUT deallocate (Terraform can't leave a VM "stopped")
 src/waste_finder/
   registry.py             REGISTRY (rule id -> Rule: titles DE/EN, severity, KQL file, pricing strategy name,
                           why/action text, az command template, docs link); the single source of truth for rules
-  models.py               Finding dataclass (severity, monthly_cost_eur, monthly_savings_eur), HOURS_PER_MONTH = 730
+  models.py               Finding dataclass (severity, age_days, quantity, monthly_cost_eur, monthly_savings_eur),
+                          HOURS_PER_MONTH = 730
   queries/*.kql           one Resource Graph query per rule
   rules.py                load_query(rule) via the registry, find_waste(run_query, rules, min_age_days) -> list[Finding];
                           Scope (subscriptions | management group | all readable) + resource_graph_runner(scope)
@@ -70,8 +71,8 @@ Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now
 
 ### How to add a rule
 
-1. `src/waste_finder/queries/<name>.kql`: project at least `id, name, resourceGroup, location, sku, tags` (plus `sizeGb` / `osType` if pricing needs them, `ageDays` for an age-based rule plus its entry in `Settings.min_age_days`).
-2. `Rule(...)` entry in `REGISTRY` in `registry.py`: id, `title_de`, `title_en`, `severity` (`high|medium|low|info`), `query_file`, `pricing`, `why_de`, `action_de`, `command` (`az ... --ids {id}`), `docs_url` (learn.microsoft.com).
+1. `src/waste_finder/queries/<name>.kql`: project at least `id, name, resourceGroup, location, sku, tags` (plus `sizeGb` / `osType` / `quantity` if pricing needs them, `ageDays` for an age-based rule plus its entry in `Settings.min_age_days`).
+2. `Rule(...)` entry in `REGISTRY` in `registry.py`: id, `title_de`, `title_en`, `severity` (`high|medium|low|info`), `query_file`, `pricing`, `why_de`, `action_de`, `command` (`az ... --ids {id}`), `docs_url` (learn.microsoft.com), optional `quantity_unit_de` (report label for `quantity`, e.g. "Instanz(en)").
 3. Pricing: reuse a strategy name from `STRATEGIES` in `pricing.py` or add a new function there (filters in `field eq 'value' and ...` shape so `demo_fetcher` can evaluate them).
 4. Demo data: rows under the rule id in `demo/resource_graph.json`, matching price items in `demo/prices.json`.
 5. Tests: pricing cases in `tests/test_pricing.py`; `tests/test_registry.py` already fails if the KQL file, the strategy or the demo rows are missing.
@@ -90,6 +91,8 @@ The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titl
 - **Subscription grouping** uses `Finding.subscription_id`, parsed from the resource ID; demo data has two subscriptions and one resource tagged `waste-finder:ignore=true`.
 - **Age-based rules** (`old_snapshot`): the KQL projects `ageDays`, computed by Resource Graph with `now()`, so demo rows carry a fixed `ageDays` and stay stable over time. `find_waste` drops rows younger than `Settings.min_age_days[rule]` before they become findings (they are not counted as ignored). `Finding.age_days` shows up in the report and in JSON/CSV (`age_days`, schema 1.1).
 - **Snapshots** are priced per GB-month of the snapshot meter (`Snapshots LRS|ZRS` of the Standard HDD or Premium SSD product) × provisioned size: an upper bound, Azure bills the used size and Resource Graph does not expose it.
+- **App Service plans** are priced from one Retail API call per region (`serviceName eq 'Azure App Service'`), matched in Python: hourly unit, product ends with ` - Linux` for Linux plans, `skuName` without spaces = ARM `sku.name` (`P1 v3` vs `P1v3`); × 730 × instances (`quantity`, from `sku.capacity`). Elastic Premium / Workflow Standard plans have no such meter and stay unpriced.
+- **Checkov and opt-in resources**: resources behind `count = var.enable_extra_waste ? 1 : 0` are not evaluated with the default variables, so CI does not scan them. Check them locally with a tfvars file that sets `enable_extra_waste = true` (`checkov -d infra --var-file <file>`) before adding inline skips.
 - **"Stopped" ≠ "deallocated"**: the VM rule matches `PowerState/stopped` only; deallocated VMs don't bill compute.
 - **Lint/types**: code passes `ruff` and `mypy --strict` (config in `pyproject.toml`) without blanket ignores; Resource Graph rows are `rules.Row`, price items `pricing.PriceItem`, pricing functions `pricing.PricingStrategy` (both `dict[str, Any]`).
 - **Language**: report text German; code, CLI help, README, docs, commits in English.

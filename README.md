@@ -23,6 +23,7 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 | VM **stopped but not deallocated** | high | "Stopped" keeps the hardware reserved, so compute is still billed. Only "deallocated" stops the compute meter | `az vm deallocate` or delete |
 | Orphaned public IP | low | Standard public IPs are billed per hour even without an association | `az network public-ip delete` unless intentionally reserved |
 | Old disk snapshot | low | Snapshots are billed per GB-month for as long as they exist, even after the source disk is gone. Reported when older than 30 days (`--snapshot-min-age`); priced at the provisioned size, an upper bound because Azure bills the used size | Keep it only if it is still a needed backup, else `az snapshot delete` |
+| Empty App Service plan | medium | A plan on a paid tier (Basic and up) bills per instance and hour even without any app. Free/Shared plans and Consumption plans are not reported | `az appservice plan delete`, or scale it down to Free (F1) |
 
 Rules are data: each one is a single entry in `registry.py` (German and English title, severity, KQL file, pricing strategy, remediation text and `az` command, docs link) plus a KQL file. The report shows the severity, a docs link per rule and the exact `az` command per finding; the tool itself never runs them.
 
@@ -55,7 +56,7 @@ src/waste_finder/
   export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (151 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (166 tests), runs fully offline, coverage floor 95 %
 docs/report.schema.json   JSON Schema of report.json
 ```
 
@@ -111,6 +112,7 @@ The demo environment uses the smallest SKUs (B1s VM, 32 GB Standard HDD, one Sta
 | Resource | Found by | Approx. cost |
 |---|---|---|
 | Incremental snapshot of the orphaned 32 GB disk | `old_snapshot` | at most 0.002 €/h (0.044 € per GB-month × 32 GB; the disk is empty, so in practice close to 0) |
+| Empty App Service plan, B1 Linux, 1 instance | `empty_app_service_plan` | about 0.016 €/h (~11.50 € per month) |
 
 Snapshots are only reported once they are 30 days old; right after `apply`, run the finder with `--snapshot-min-age 0` to see it.
 
@@ -137,7 +139,7 @@ waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 abov
 | `--subscription ID` | Subscription to scan; repeat for several. Default `$AZURE_SUBSCRIPTION_ID` |
 | `--all-subscriptions` | Every subscription the credential can read (Resource Graph at tenant scope) |
 | `--management-group ID` | All subscriptions below this management group |
-| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`) |
+| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`, `empty_app_service_plan`) |
 | `--exclude PATTERN` | Ignore resources whose ID matches the glob (case-insensitive); repeatable |
 | `--min-savings AMOUNT` | Leave out findings that save less per month; unpriced findings stay in |
 | `--snapshot-min-age DAYS` | `old_snapshot` reports snapshots at least this many days old (default 30; age from the snapshot's creation time) |
@@ -172,8 +174,8 @@ snapshot_min_age_days = 30         # old_snapshot: only snapshots at least this 
 | Format | File | Use |
 |---|---|---|
 | `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription |
-| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.1`; 1.1 added `age_days`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
-| `csv` | `report.csv` | One row per finding (subscription, resource group, rule, severity, age, cost, savings, currency, resource ID, `az` command) for Excel |
+| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.2`; 1.1 added `age_days`, 1.2 `quantity`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
+| `csv` | `report.csv` | One row per finding (subscription, resource group, rule, severity, age, quantity, cost, savings, currency, resource ID, `az` command) for Excel |
 | `sarif` | `report.sarif` | SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding (`high` → error, `medium` → warning, `low`/`info` → note). Azure resources are not files, so the resource ID is the alert's path; a fingerprint of rule + resource ID keeps alerts stable, so cleaning up a resource closes its alert |
 
 Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`sarif_file: reports/report.sarif`, `category: azure-waste-finder`) to see findings under Security → Code scanning.
@@ -225,7 +227,7 @@ Dependabot opens weekly PRs for pip, GitHub Actions and Terraform providers: min
 
 ## Roadmap
 
-The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (empty App Service plans, idle network resources, downgrade candidates, free clean-up findings), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
+The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (idle network resources, downgrade candidates, free clean-up findings), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
 
 ## License
 

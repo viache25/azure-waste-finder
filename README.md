@@ -3,6 +3,7 @@
 [![CI](https://github.com/viache25/azure-waste-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/viache25/azure-waste-finder/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/viache25/azure-waste-finder/actions/workflows/codeql.yml/badge.svg)](https://github.com/viache25/azure-waste-finder/actions/workflows/codeql.yml)
 [![Release](https://img.shields.io/github/v/release/viache25/azure-waste-finder)](https://github.com/viache25/azure-waste-finder/releases/latest)
+[![CD](https://github.com/viache25/azure-waste-finder/actions/workflows/cd.yml/badge.svg)](https://github.com/viache25/azure-waste-finder/actions/workflows/cd.yml)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -54,6 +55,7 @@ flowchart LR
 ```
 
 ```
+Dockerfile, .dockerignore  container image (multi-stage, non-root), pushed to GHCR by cd.yml
 infra/                    Terraform: resource group, 5 € budget alert, 3 waste resources
   extra-waste.tf          opt-in waste for the newer rules (enable_extra_waste = true)
   tests/*.tftest.hcl      terraform test with mocked providers (no Azure login)
@@ -106,6 +108,24 @@ waste-finder --demo
 ```
 
 Or straight from the release URL: `pip install https://github.com/viache25/azure-waste-finder/releases/download/v0.2.0/azure_waste_finder-0.2.0-py3-none-any.whl`.
+
+## Container image
+
+`ghcr.io/viache25/azure-waste-finder` is built from the [Dockerfile](Dockerfile) (multi-stage on `python:3.12-slim`, runs as the non-root user `finder`, uid 10001, entrypoint `waste-finder`, working directory `/work`). Every green CI run on `main` pushes it with two tags: the short commit SHA and `latest`.
+
+```bash
+docker run --rm ghcr.io/viache25/azure-waste-finder --version
+docker run --rm ghcr.io/viache25/azure-waste-finder --demo --format md,html,json
+
+# keep the reports: mount ./reports (run as your own uid so the files belong to you)
+mkdir -p reports
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/reports:/work/reports" \
+  ghcr.io/viache25/azure-waste-finder --demo --format md,html,json
+```
+
+The image has no Azure CLI, so `az login` does not carry over. For a real run, give `DefaultAzureCredential` what it reads from the environment: a workload identity / federated token (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_FEDERATED_TOKEN_FILE`), a managed identity on Azure, or (least preferred) a service principal secret via `-e AZURE_CLIENT_ID -e AZURE_TENANT_ID -e AZURE_CLIENT_SECRET`. Reader on the subscription is enough.
+
+Build it yourself with `docker build --build-arg VERSION=0.2.0 -t azure-waste-finder .` (the version build argument replaces the git tag, which is not in the build context).
 
 ## Full run against a real subscription
 
@@ -264,6 +284,7 @@ Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`s
 - Authentication uses `DefaultAzureCredential`, i.e. your local `az login`. No keys or secrets in the code or the repo.
 - `*.tfstate` and `*.tfvars` are git-ignored: state contains resource IDs and the generated SSH key.
 - The demo VM has no public IP and password login is disabled; the orphaned disk denies public network access. `terraform test` checks all of this in CI.
+- The container image runs as a non-root user, and Trivy scans every image pushed to GHCR (report-only, Security tab).
 - Checkov scans `infra/` on every PR. Findings that are intentional for a waste environment (no customer-managed key on an empty disk, no NSG on a subnet without public endpoints) are skipped inline with a reason.
 - CodeQL analyses the Python code on every PR, on `main` and weekly; `pip-audit` fails CI when a runtime or dev dependency has a known vulnerability.
 - The tool is **read-only**: it never changes or deletes anything in the subscription.
@@ -289,12 +310,17 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 |---|---|
 | `lint` | `ruff check`, `ruff format --check`, `mypy` (strict) |
 | `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
+| `docker` | builds the image (not pushed), checks that it runs as uid 10001, runs `--version` and the demo in the container with a mounted output directory |
 | `package` | builds sdist + wheel like a release (`python -m build`, `twine check --strict`) and runs `--version` and the demo from the installed wheel outside the source tree |
 | `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
 | `terraform` | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked azurerm/tls providers: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
 `.github/workflows/codeql.yml` runs CodeQL for Python on PRs, on `main` and weekly; alerts appear under Security → Code scanning.
+
+### Continuous delivery
+
+`.github/workflows/cd.yml` runs when the CI workflow has finished **successfully on `main`** (`workflow_run`), builds exactly the tested commit (`workflow_run.head_sha`), smoke-tests it, pushes `ghcr.io/viache25/azure-waste-finder:<short sha>` and `:latest` with `GITHUB_TOKEN`, then scans the image with Trivy (report-only, unfixed CVEs skipped). Findings appear under Security → Code scanning, category `trivy-image`. Dependabot keeps the digest-pinned base image current.
 
 ### Releases
 
@@ -306,7 +332,7 @@ git tag -a v0.3.0 -m "v0.3.0" && git push origin v0.3.0
 
 `.github/workflows/release.yml` then builds sdist + wheel (checks that the version equals the tag, `twine check --strict`), installs the wheel on Python 3.11 / 3.12 / 3.13 and runs the whole test suite against it with `src/` removed, and creates a GitHub Release with generated notes and both files attached (tags with a `-`, e.g. `v0.3.0-rc1`, become pre-releases). A `pypi` job publishes to PyPI with trusted publishing (OIDC, no API token); it is prepared but only runs when the repo variable `PYPI_PUBLISH` is `true`. One-time setup: on PyPI add a pending trusted publisher (project `azure-waste-finder`, owner `viache25`, repository `azure-waste-finder`, workflow `release.yml`, environment `pypi`), create the GitHub environment `pypi`, then `gh variable set PYPI_PUBLISH --body true`.
 
-Dependabot opens weekly PRs for pip, GitHub Actions and Terraform providers: minor and patch bumps grouped into one PR per ecosystem, major bumps as separate PRs. They are merged when CI is green.
+Dependabot opens weekly PRs for pip, GitHub Actions, Terraform providers and the Docker base image: minor and patch bumps grouped into one PR per ecosystem, major bumps as separate PRs (the image stays on Python 3.12 until changed on purpose). They are merged when CI is green.
 
 ## Roadmap
 

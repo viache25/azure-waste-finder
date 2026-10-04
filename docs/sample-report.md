@@ -15,6 +15,20 @@ Die Ressourcen kosten zusammen ca. 533,36 € pro Monat; eingespart wird weniger
 
 Dazu 6 kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).
 
+## Entwicklung seit dem letzten Bericht
+
+Letzter Bericht vom 2026-09-04: ca. 519,00 € pro Monat. Jetzt ca. 509,03 €, also **-9,97 € pro Monat**.
+
+2 neu (+77,34 €), 2 behoben (-151,55 €), 13 unverändert, davon 1 mit geändertem Betrag (+64,24 €).
+
+| Status | Ressource | Problem | Subscription | vorher €/Monat | jetzt €/Monat |
+|---|---|---|---|---:|---:|
+| neu | `sap-test-db-data` | Premium-Disk an deallozierter VM | `11111111-1111-1111-1111-111111111111` | – | 48,43 € |
+| neu | `natgw-old-hub` | NAT-Gateway ohne Subnetz | `11111111-1111-1111-1111-111111111111` | – | 28,91 € |
+| behoben | `build-agent-01` | VM gestoppt, aber nicht dealloziert | `11111111-1111-1111-1111-111111111111` | 148,19 € | – |
+| behoben | `pip-old-vpn` | Ungenutzte öffentliche IP-Adresse | `00000000-0000-0000-0000-000000000000` | 3,36 € | – |
+| geändert | `asp-intranet-legacy` | Leerer App-Service-Plan | `11111111-1111-1111-1111-111111111111` | 64,24 € | 128,48 € |
+
 ## Gefundene Ressourcen
 
 ### Subscription `11111111-1111-1111-1111-111111111111`

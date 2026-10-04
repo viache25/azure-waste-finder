@@ -34,6 +34,29 @@ Kostenquelle: {{ summary.actual }} von {{ summary.count }} Beträgen sind Ist-Ko
 
 Dazu {{ summary.cleanup }} kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).
 {% endif %}
+{% if trend %}
+
+## Entwicklung seit dem letzten Bericht
+
+Letzter Bericht vom {{ trend.previous.generated }}{% if trend.previous.scope != scope %} (Bereich `{{ trend.previous.scope }}`){% endif %}: ca. {{ trend.previous_monthly | eur }} pro Monat. Jetzt ca. {{ summary.monthly_eur | eur }}, also **{{ trend.monthly_change | signed_eur }} pro Monat**.
+
+{{ trend.new | length }} neu ({{ trend.new_monthly | signed_eur }}), {{ trend.resolved | length }} behoben ({{ (-trend.resolved_monthly) | signed_eur }}), {{ trend.unchanged | length }} unverändert{% if trend.changed %}, davon {{ trend.changed | length }} mit geändertem Betrag ({{ trend.changed_monthly | signed_eur }}){% endif %}.
+{% if trend.previous.cost_source != cost_source_name %}
+
+Der letzte Bericht nutzte {{ "Ist-Kosten" if trend.previous.cost_source == "actual" else "Listenpreise" }}; ein Teil der Änderung kann von der anderen Kostenquelle kommen.
+{% endif %}
+{% if trend_rows %}
+
+| Status | Ressource | Problem | Subscription | vorher {{ currency_symbol }}/Monat | jetzt {{ currency_symbol }}/Monat |
+|---|---|---|---|---:|---:|
+{% for row in trend_rows %}
+| {{ trend_labels[row.status] }} | `{{ row.name }}` | {{ rules[row.rule].title_de }} | `{{ row.subscription_id or "unbekannt" }}` | {{ "–" if row.status == "new" else row.previous | eur }} | {{ "–" if row.status == "resolved" else row.current | eur }} |
+{% endfor %}
+{% else %}
+
+Keine Veränderung seit dem letzten Bericht.
+{% endif %}
+{% endif %}
 
 ## Gefundene Ressourcen
 {% for group in groups %}

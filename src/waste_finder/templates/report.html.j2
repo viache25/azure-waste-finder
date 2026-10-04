@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Azure Kostencheck</title>
 <style>
-  :root { --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea; --accent:#0a66c2; --bad:#b42318; --bg:#fff; --card:#f6f8fa; }
+  :root { --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea; --accent:#0a66c2; --bad:#b42318; --ok:#1a7f37; --bg:#fff; --card:#f6f8fa; }
   @media (prefers-color-scheme: dark) {
-    :root { --fg:#e6e8eb; --muted:#9aa4af; --line:#30363d; --accent:#4ea1ff; --bad:#ff7b72; --bg:#0d1117; --card:#161b22; }
+    :root { --fg:#e6e8eb; --muted:#9aa4af; --line:#30363d; --accent:#4ea1ff; --bad:#ff7b72; --ok:#3fb950; --bg:#0d1117; --card:#161b22; }
   }
   body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 32px 16px; }
   main { max-width: 1000px; margin: 0 auto; }
@@ -28,6 +28,9 @@
   .sev { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; border: 1px solid var(--line); }
   .sev-high { color: var(--bad); border-color: var(--bad); }
   .sev-medium { color: var(--accent); border-color: var(--accent); }
+  .trend { font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .trend-new { color: var(--bad); }
+  .trend-resolved { color: var(--ok); }
   footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
 </style>
 </head>
@@ -48,6 +51,34 @@
     {% if summary.below_threshold %}<br>{{ summary.below_threshold }} Ressource(n) unter der Schwelle von {{ min_savings | eur }} pro Monat nicht aufgeführt.{% endif %}
     {% if summary.cleanup %}<br>Dazu {{ summary.cleanup }} kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).{% endif %}
   </div>
+
+  {% if trend %}
+  <h2 id="entwicklung">Entwicklung seit dem letzten Bericht</h2>
+  <p>Letzter Bericht vom {{ trend.previous.generated }}{% if trend.previous.scope != scope %} (Bereich <code>{{ trend.previous.scope }}</code>){% endif %}: ca. {{ trend.previous_monthly | eur }} pro Monat. Jetzt ca. {{ summary.monthly_eur | eur }}, also <strong>{{ trend.monthly_change | signed_eur }} pro Monat</strong>.</p>
+  <p>{{ trend.new | length }} neu ({{ trend.new_monthly | signed_eur }}), {{ trend.resolved | length }} behoben ({{ (-trend.resolved_monthly) | signed_eur }}), {{ trend.unchanged | length }} unverändert{% if trend.changed %}, davon {{ trend.changed | length }} mit geändertem Betrag ({{ trend.changed_monthly | signed_eur }}){% endif %}.</p>
+  {% if trend.previous.cost_source != cost_source_name %}<p>Der letzte Bericht nutzte {{ "Ist-Kosten" if trend.previous.cost_source == "actual" else "Listenpreise" }}; ein Teil der Änderung kann von der anderen Kostenquelle kommen.</p>{% endif %}
+  {% if trend_rows %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Status</th><th>Ressource</th><th>Problem</th><th>Subscription</th><th class="num">vorher {{ currency_symbol }}/Monat</th><th class="num">jetzt {{ currency_symbol }}/Monat</th></tr></thead>
+    <tbody>
+    {% for row in trend_rows %}
+      <tr>
+        <td><span class="trend trend-{{ row.status }}">{{ trend_labels[row.status] }}</span></td>
+        <td><code>{{ row.name }}</code></td>
+        <td>{{ rules[row.rule].title_de }}</td>
+        <td><code>{{ row.subscription_id or "unbekannt" }}</code></td>
+        <td class="num">{{ "–" if row.status == "new" else row.previous | eur }}</td>
+        <td class="num">{{ "–" if row.status == "resolved" else row.current | eur }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p>Keine Veränderung seit dem letzten Bericht.</p>
+  {% endif %}
+  {% endif %}
 
   {% for group in groups %}
   <h2>Subscription <code>{{ group.subscription_id or "unbekannt" }}</code></h2>

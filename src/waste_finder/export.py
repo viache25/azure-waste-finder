@@ -17,14 +17,15 @@ from typing import TYPE_CHECKING, Any
 from waste_finder import __version__
 from waste_finder.models import Finding
 from waste_finder.registry import REGISTRY, SEVERITIES
-from waste_finder.report import Summary, cleanup_order, eur
+from waste_finder.report import Summary, cleanup_order, eur, signed_eur
 
 if TYPE_CHECKING:
     from waste_finder.costs import CostPeriod
+    from waste_finder.trend import Trend
 
 FORMATS = ("md", "html", "json", "csv", "sarif")
 DEFAULT_FORMATS = ("md", "html")
-SCHEMA_VERSION = "1.4"
+SCHEMA_VERSION = "1.5"
 
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 SARIF_LEVELS = {"high": "error", "medium": "warning", "low": "note", "info": "note"}
@@ -46,6 +47,7 @@ CSV_COLUMNS = (
     "monthly_savings",
     "currency",
     "cost_source",
+    "trend",
     "resource_id",
     "command",
 )
@@ -67,7 +69,8 @@ def _ordered(findings: list[Finding]) -> list[Finding]:
     return sorted(findings, key=lambda f: f.savings_eur or 0, reverse=True)
 
 
-def finding_dict(f: Finding) -> dict[str, Any]:
+def finding_dict(f: Finding, trend: Trend | None = None) -> dict[str, Any]:
+    """`trend` (from --previous) adds the finding's status and its previous savings; None leaves both null."""
     rule = REGISTRY[f.rule]
     return {
         "rule": f.rule,
@@ -88,13 +91,48 @@ def finding_dict(f: Finding) -> dict[str, Any]:
         "monthly_cost": f.monthly_cost_eur,
         "monthly_savings": f.savings_eur,
         "cost_source": f.cost_source,
+        "trend": trend.status(f) if trend else None,
+        "previous_monthly_savings": trend.previous_amount(f) if trend else None,
         "price_note": f.price_note,
         "command": rule.remediation_command(f.resource_id),
         "docs_url": rule.docs_url,
     }
 
 
-def render_json(findings: list[Finding], summary: Summary, run: RunInfo, cleanup: list[Finding] | None = None) -> str:
+def trend_dict(trend: Trend) -> dict[str, Any]:
+    return {
+        "previous": {
+            "generated": trend.previous.generated,
+            "scope": trend.previous.scope,
+            "cost_source": trend.previous.cost_source,
+            "monthly_savings": trend.previous_monthly,
+        },
+        "monthly_savings_change": trend.monthly_change,
+        "new": len(trend.new),
+        "resolved": len(trend.resolved),
+        "unchanged": len(trend.unchanged),
+        "changed": len(trend.changed),
+        "resolved_findings": [
+            {
+                "rule": f.rule,
+                "resource_id": f.resource_id,
+                "subscription_id": f.subscription_id,
+                "name": f.name,
+                "resource_group": f.resource_group,
+                "monthly_savings": f.monthly_savings,
+            }
+            for f in sorted(trend.resolved, key=lambda f: f.monthly_savings or 0, reverse=True)
+        ],
+    }
+
+
+def render_json(
+    findings: list[Finding],
+    summary: Summary,
+    run: RunInfo,
+    cleanup: list[Finding] | None = None,
+    trend: Trend | None = None,
+) -> str:
     data = {
         "schema_version": SCHEMA_VERSION,
         "tool": {"name": "azure-waste-finder", "version": __version__},
@@ -119,19 +157,29 @@ def render_json(findings: list[Finding], summary: Summary, run: RunInfo, cleanup
             "cleanup": summary.cleanup,
             "actual_costs": summary.actual,
         },
-        "findings": [finding_dict(f) for f in _ordered(findings)],
+        "findings": [finding_dict(f, trend) for f in _ordered(findings)],
         "cleanup": [finding_dict(f) for f in cleanup_order(cleanup or [])],
+        "trend": trend_dict(trend) if trend else None,
     }
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
-def render_csv(findings: list[Finding], summary: Summary, run: RunInfo, cleanup: list[Finding] | None = None) -> str:
-    """One row per finding, free clean-up findings last; amounts with a dot as decimal separator, empty if unpriced."""
+def render_csv(
+    findings: list[Finding],
+    summary: Summary,
+    run: RunInfo,
+    cleanup: list[Finding] | None = None,
+    trend: Trend | None = None,
+) -> str:
+    """One row per finding, free clean-up findings last; amounts with a dot as decimal separator, empty if unpriced.
+    `trend` is new/unchanged with --previous (empty for clean-up findings and without --previous)."""
     out = io.StringIO()
     writer = csv.DictWriter(out, fieldnames=CSV_COLUMNS, lineterminator="\n")
     writer.writeheader()
-    for f in _ordered(findings) + cleanup_order(cleanup or []):
-        d = finding_dict(f)
+    rows = [finding_dict(f, trend) for f in _ordered(findings)] + [
+        finding_dict(f) for f in cleanup_order(cleanup or [])
+    ]
+    for d in rows:
         d["title"] = d["title_en"]
         d["currency"] = run.currency
         writer.writerow({k: "" if d[k] is None else d[k] for k in CSV_COLUMNS})
@@ -142,13 +190,20 @@ def _fingerprint(f: Finding) -> str:
     return hashlib.sha256(f"{f.rule}|{f.resource_id.lower()}".encode()).hexdigest()
 
 
-def render_sarif(findings: list[Finding], summary: Summary, run: RunInfo, cleanup: list[Finding] | None = None) -> str:
+def render_sarif(
+    findings: list[Finding],
+    summary: Summary,
+    run: RunInfo,
+    cleanup: list[Finding] | None = None,
+    trend: Trend | None = None,
+) -> str:
     """SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding (free clean-up
     findings included, as notes).
 
     Azure resources are not files, so each result points at the resource ID as its artifact URI
     (shown as the alert's path) and names it as a logical location. The fingerprint (rule + resource ID)
-    keeps an alert stable across runs, so a resource that is cleaned up closes its alert.
+    keeps an alert stable across runs, so a resource that is cleaned up closes its alert. Code scanning tracks
+    new and fixed alerts itself, so `trend` is not used here.
     """
     rule_ids = list(REGISTRY)
     rules = [
@@ -214,7 +269,13 @@ def render_sarif(findings: list[Finding], summary: Summary, run: RunInfo, cleanu
 EXPORTERS = {"json": render_json, "csv": render_csv, "sarif": render_sarif}
 
 
-def render_summary(findings: list[Finding], summary: Summary, run: RunInfo, fail_over: float | None = None) -> str:
+def render_summary(
+    findings: list[Finding],
+    summary: Summary,
+    run: RunInfo,
+    fail_over: float | None = None,
+    trend: Trend | None = None,
+) -> str:
     """Short German Markdown summary, meant to be appended to $GITHUB_STEP_SUMMARY."""
 
     def money(value: float | None) -> str:
@@ -226,6 +287,12 @@ def render_summary(findings: list[Finding], summary: Summary, run: RunInfo, fail
         f"**{summary.count}** ungenutzte Ressource(n) im Bereich `{run.scope}`, "
         f"≈ {money(summary.yearly_eur)} pro Jahr.",
     ]
+    if trend:
+        lines += [
+            "",
+            f"Seit dem letzten Bericht ({trend.previous.generated}): **{signed_eur(trend.monthly_change, run.currency)}"
+            f" pro Monat**; {len(trend.new)} neu, {len(trend.resolved)} behoben, {len(trend.unchanged)} unverändert.",
+        ]
     if run.cost_source == "actual":
         lines += [
             "",

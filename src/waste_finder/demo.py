@@ -1,4 +1,5 @@
-"""Offline data for --demo and tests: fake subscriptions, a small price list and Cost Management answers."""
+"""Offline data for --demo and tests: fake subscriptions, a small price list, Cost Management answers and the
+report of a previous run (so the demo report shows a trend)."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from waste_finder.costs import ActualCosts, CostQuery, parse_query_result
 from waste_finder.pricing import PriceFetcher, PriceItem
 from waste_finder.registry import REGISTRY
 from waste_finder.rules import QueryRunner, Row, load_query
+from waste_finder.trend import PreviousReport, parse_previous
 
 
 def _load(name: str) -> Any:
@@ -47,3 +49,12 @@ def demo_cost_query() -> CostQuery:
         return parse_query_result(responses[subscription_id]) if subscription_id in responses else {}
 
     return query
+
+
+DEMO_PREVIOUS = "previous-report.json"
+
+
+def demo_previous_report() -> PreviousReport:
+    """report.json of an earlier demo run, used by --demo unless --previous is given."""
+    path = resources.files("waste_finder").joinpath("demo", DEMO_PREVIOUS)
+    return parse_previous(path.read_text(encoding="utf-8"), f"demo/{DEMO_PREVIOUS}")

@@ -57,6 +57,47 @@
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }
     },
+    "trend": {
+      "description": "Comparison with the report given as `--previous` (findings of the rules that ran in this run; free clean-up findings are not compared), else null. Since 1.5.",
+      "type": ["object", "null"],
+      "required": ["previous", "monthly_savings_change", "new", "resolved", "unchanged", "changed", "resolved_findings"],
+      "additionalProperties": false,
+      "properties": {
+        "previous": {
+          "type": "object",
+          "required": ["generated", "scope", "cost_source", "monthly_savings"],
+          "additionalProperties": false,
+          "properties": {
+            "generated": { "type": "string" },
+            "scope": { "type": "string" },
+            "cost_source": { "description": "`retail` for reports older than 1.4.", "type": "string" },
+            "monthly_savings": { "description": "Previous total over the compared rules.", "type": "number", "minimum": 0 }
+          }
+        },
+        "monthly_savings_change": { "description": "`summary.monthly_savings` minus `previous.monthly_savings`.", "type": "number" },
+        "new": { "description": "Findings not in the previous report (`trend` `new`).", "type": "integer", "minimum": 0 },
+        "resolved": { "description": "Findings of the previous report that are gone, listed in `resolved_findings`.", "type": "integer", "minimum": 0 },
+        "unchanged": { "description": "Findings in both reports (`trend` `unchanged`), whatever their amount.", "type": "integer", "minimum": 0 },
+        "changed": { "description": "Unchanged findings whose `monthly_savings` differ from `previous_monthly_savings`.", "type": "integer", "minimum": 0 },
+        "resolved_findings": {
+          "description": "Sorted by `monthly_savings`, highest first.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule", "resource_id", "subscription_id", "name", "resource_group", "monthly_savings"],
+            "additionalProperties": false,
+            "properties": {
+              "rule": { "type": "string" },
+              "resource_id": { "type": "string" },
+              "subscription_id": { "type": "string" },
+              "name": { "type": "string" },
+              "resource_group": { "type": "string" },
+              "monthly_savings": { "$ref": "#/$defs/amount" }
+            }
+          }
+        }
+      }
+    },
     "cleanup": {
       "description": "Free clean-up findings (priced at 0, severity `info`), e.g. orphaned NICs, unattached NSGs, empty resource groups. Not part of `summary.monthly_savings` and not subject to `min_monthly_savings`. Sorted by subscription, resource group, rule, name. Since 1.3.",
       "type": "array",
@@ -92,6 +133,8 @@
         "monthly_cost": { "description": "What the resource costs now; null if no price was found.", "$ref": "#/$defs/amount" },
         "monthly_savings": { "description": "What acting on the finding saves; equals `monthly_cost` unless the action is a downgrade.", "$ref": "#/$defs/amount" },
         "cost_source": { "description": "Where `monthly_cost` comes from: `retail` (Retail Prices API list price), `actual` (Cost Management, amortized cost of `cost_period`), null if unpriced. Since 1.4.", "enum": ["retail", "actual", null] },
+        "trend": { "description": "With `--previous`: `new` (not in the previous report) or `unchanged` (same rule and resource ID); null without `--previous` and for clean-up findings. Since 1.5.", "enum": ["new", "unchanged", null] },
+        "previous_monthly_savings": { "description": "`monthly_savings` in the previous report for an `unchanged` finding, else null. Since 1.5.", "$ref": "#/$defs/amount" },
         "price_note": { "description": "How the price was derived, e.g. `0.0112 €/h × 730 h`.", "type": "string" },
         "command": { "description": "The `az` command that fixes it. The tool never runs it.", "type": "string" },
         "docs_url": { "type": "string" }

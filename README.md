@@ -47,6 +47,8 @@ flowchart LR
     RG -->|Findings minus ignored| PR[pricing.py<br/>Retail Prices API]
     CM[costs.py<br/>Cost Management<br/>--cost-source actual] -.->|actual € replace list €| PR
     PR -->|€ per month| RP[report.py<br/>Markdown + HTML]
+    PREV[(previous<br/>report.json)] -.->|--previous| TR[trend.py<br/>new / resolved / unchanged]
+    TR -.-> RP
     PR -->|€ per month| EX[export.py<br/>JSON, CSV, SARIF]
 ```
 
@@ -62,11 +64,13 @@ src/waste_finder/
   config.py               waste-finder.toml + CLI flags: rules, exclusions, threshold, currency
   pricing.py              pricing strategies: Retail Prices API -> €/month per finding (cached 24 h)
   costs.py                --cost-source actual: Cost Management Query API, amortized cost per resource
+  trend.py                --previous: new, resolved and unchanged findings since an earlier report.json
   report.py, templates/   German client report (Markdown + HTML)
   export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
-  demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (270 tests), runs fully offline, coverage floor 95 %
+  demo/                   fictional subscriptions, sample prices, Cost Management answers and an earlier
+                          report.json (so the demo report shows a trend) for --demo and tests
+tests/                    pytest (299 tests), runs fully offline, coverage floor 95 %
   fixtures/               recorded-format API responses (Cost Management)
 docs/report.schema.json   JSON Schema of report.json
 ```
@@ -144,6 +148,7 @@ waste-finder --snapshot-min-age 90                            # report disk snap
 waste-finder --downgrade-lookback 14                          # SSD disks of VMs deallocated for 14+ days (default 30)
 waste-finder --currency CHF                                   # Retail API currency (default EUR)
 waste-finder --cost-source actual                             # actual costs from Cost Management, retail as fallback
+waste-finder --format md,html,json --previous last/report.json  # trend since an earlier run
 waste-finder --config path/to/waste-finder.toml               # default: ./waste-finder.toml if present
 waste-finder --format md,html,json,csv,sarif                  # output formats (default md,html)
 waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 above 100 per month; CI summary
@@ -162,6 +167,7 @@ waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 abov
 | `--currency CODE` | Currency for list prices, e.g. `EUR`, `CHF`, `USD` (`--demo` always uses its EUR sample prices) |
 | `--cost-source SOURCE` | `retail` (default): list prices from the Retail Prices API. `actual`: amortized cost of the last 30 days from Cost Management, retail price as fallback per finding (see below) |
 | `--format A,B` | Output formats: `md`, `html`, `json`, `csv`, `sarif` (default `md,html`); written as `report.<format>` |
+| `--previous REPORT_JSON` | `report.json` of an earlier run: the report shows new, resolved and unchanged findings and the change per month (see below). `--demo` uses a built-in earlier run; an empty value turns the trend off |
 | `--fail-over AMOUNT` | Exit with code 3 when the monthly waste is above this amount (reports are still written) |
 | `--summary FILE` | Append a short Markdown summary to this file, e.g. `$GITHUB_STEP_SUMMARY`; an empty value is ignored |
 | `--config PATH` | Config file; without it `./waste-finder.toml` is used when it exists |
@@ -203,13 +209,29 @@ waste-finder --subscription <id> --cost-source actual
 waste-finder --demo --cost-source actual      # offline, with recorded-format Cost Management answers
 ```
 
+## Trend between runs
+
+Keep the `report.json` of each run (`--format json`) and pass the last one with `--previous` to see what changed:
+
+```bash
+waste-finder --subscription <id> --format md,html,json --out-dir reports/2026-10
+waste-finder --subscription <id> --format md,html,json --out-dir reports/2026-11 --previous reports/2026-10/report.json
+```
+
+- A finding is **the same** in both runs when rule and resource ID match (case-insensitive). Findings only in this run are **new**, findings only in the previous report are **resolved**, the rest are **unchanged**; unchanged findings whose amount changed (more instances, a new price) are counted as "geändert".
+- The report gets a section **"Entwicklung seit dem letzten Bericht"**: previous total, current total and the change per month (e.g. *-9,97 € pro Monat*), the counts with their amounts, and a table of new, resolved and changed findings. The CLI and `--summary` print the change too.
+- Only the rules of this run are compared, so `--rules` does not make the other rules look resolved. Free clean-up findings are not compared (they are not in the total). A resource that is now ignored, excluded or below `--min-savings` counts as resolved.
+- The previous report must be in the same currency (else exit code 2). When it used another cost source (retail vs. actual), the report says so, because part of the change may come from that.
+- JSON: `trend` (previous date, scope, cost source and total, `monthly_savings_change`, counts, `resolved_findings`) and per finding `trend` (`new` / `unchanged`) and `previous_monthly_savings`; CSV has a `trend` column. Any 1.x `report.json` can serve as the previous report.
+- `--demo` compares with a built-in earlier demo run (`demo/previous-report.json`, schema 1.3), so the demo report and the [sample report](docs/sample-report.md) show a trend; `--previous ''` turns it off.
+
 ## Output formats and exit codes
 
 | Format | File | Use |
 |---|---|---|
 | `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription, plus the section "Aufräumen (kostenlos)" for free findings |
-| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.4`; 1.1 added `age_days`, 1.2 `quantity`, 1.3 the `cleanup` list and `summary.cleanup`, 1.4 `cost_source`, `cost_period` and `summary.actual_costs`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
-| `csv` | `report.csv` | One row per finding, free clean-up findings last (subscription, resource group, rule, severity, age, quantity, cost, savings, currency, cost source, resource ID, `az` command) for Excel |
+| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.5`; 1.1 added `age_days`, 1.2 `quantity`, 1.3 the `cleanup` list and `summary.cleanup`, 1.4 `cost_source`, `cost_period` and `summary.actual_costs`, 1.5 `trend` and per finding `trend` and `previous_monthly_savings`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
+| `csv` | `report.csv` | One row per finding, free clean-up findings last (subscription, resource group, rule, severity, age, quantity, cost, savings, currency, cost source, trend, resource ID, `az` command) for Excel |
 | `sarif` | `report.sarif` | SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding, free clean-up findings included (`high` → error, `medium` → warning, `low`/`info` → note). Azure resources are not files, so the resource ID is the alert's path; a fingerprint of rule + resource ID keeps alerts stable, so cleaning up a resource closes its alert |
 
 Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`sarif_file: reports/report.sarif`, `category: azure-waste-finder`) to see findings under Security → Code scanning.
@@ -217,7 +239,7 @@ Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`s
 | Exit code | Meaning |
 |---|---|
 | `0` | Run completed (waste may still have been found) |
-| `2` | Usage or config error (unknown rule, format or currency, bad config file, no subscription given) |
+| `2` | Usage or config error (unknown rule, format or currency, bad config file, no subscription given, unreadable `--previous` report or one in another currency) |
 | `3` | Monthly waste is above `--fail-over` / `fail_over` (strictly greater); all reports were written |
 
 `--summary` appends a few lines (total, threshold verdict, one row per rule, counts of unpriced, ignored, below-threshold and free clean-up findings) to a file. In GitHub Actions, `--summary "$GITHUB_STEP_SUMMARY"` puts them on the run's summary page; CI does this for the demo run.

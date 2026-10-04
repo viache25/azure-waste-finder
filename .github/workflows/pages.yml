@@ -1,0 +1,56 @@
+name: Pages
+
+# D9: runs after the CI workflow finished on main and only when that run succeeded; builds the demo report of
+# exactly the commit CI tested (workflow_run.head_sha) and publishes it to GitHub Pages:
+# https://viache25.github.io/azure-waste-finder/ (index.html = HTML report, plus report.json, .md, .csv and the
+# JSON schema). Pages source must be "GitHub Actions". workflow_run changes only take effect on main.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0 # setuptools-scm: the report shows the tool version
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install .
+      # Demo data only (fictional subscriptions, sample prices): nothing from a real Azure subscription.
+      - name: Demo report
+        run: waste-finder --demo --format html,json,md,csv --out-dir site
+      - name: Site
+        run: |
+          cp site/report.html site/index.html
+          cp docs/report.schema.json site/report.schema.json
+          ls -l site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write # deploy to Pages
+      id-token: write # verify the deployment origin
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

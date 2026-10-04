@@ -26,6 +26,8 @@ def test_find_waste_maps_rows_to_findings():
         "orphaned_public_ip": 3,
         "old_snapshot": 4,  # no minimum age given: all snapshots
         "empty_app_service_plan": 2,
+        "idle_nat_gateway": 1,
+        "idle_load_balancer": 2,
     }
 
     disk = next(f for f in by_rule["unattached_disk"] if f.name == "awf-orphaned-disk")
@@ -94,3 +96,14 @@ def test_empty_app_service_plan_query_skips_free_and_consumption_tiers():
         assert f"'{tier}'" in q
     plan = next(f for f in find_waste(demo_runner(), ["empty_app_service_plan"]) if f.name == "asp-intranet-legacy")
     assert (plan.sku, plan.os_type, plan.quantity) == ("S1", "Windows", 2)
+
+
+def test_idle_network_queries():
+    nat = load_query("idle_nat_gateway")
+    assert "microsoft.network/natgateways" in nat and "properties.subnets" in nat
+    lb = load_query("idle_load_balancer")
+    assert "microsoft.network/loadbalancers" in lb and "=~ 'Standard'" in lb
+    assert "backendIPConfigurations" in lb and "loadBalancerBackendAddresses" in lb
+    assert "loadBalancingRules" in lb and "outboundRules" in lb and "quantity = rules" in lb
+    lbs = {f.name: f for f in find_waste(demo_runner(), ["idle_load_balancer"])}
+    assert (lbs["lb-web-old"].quantity, lbs["awf-idle-lb"].quantity) == (2, 0)

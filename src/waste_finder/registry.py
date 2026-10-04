@@ -110,5 +110,43 @@ REGISTRY: dict[str, Rule] = {
             docs_url="https://learn.microsoft.com/azure/app-service/overview-hosting-plans",
             quantity_unit_de="Instanz(en)",
         ),
+        Rule(
+            id="idle_nat_gateway",
+            title_de="NAT-Gateway ohne Subnetz",
+            title_en="NAT gateway without subnet",
+            severity="medium",
+            query_file="idle_nat_gateways.kql",
+            pricing="nat_gateway",
+            why_de=(
+                "Ein NAT-Gateway wird pro Stunde verrechnet, auch wenn kein Subnetz es nutzt und kein Datenverkehr "
+                "fließt; die zugeordneten öffentlichen IPs kosten zusätzlich."
+            ),
+            action_de=(
+                "NAT-Gateway löschen, wenn kein Subnetz es mehr braucht; danach die frei gewordenen öffentlichen "
+                "IPs prüfen."
+            ),
+            command="az network nat gateway delete --ids {id}",
+            docs_url="https://learn.microsoft.com/azure/nat-gateway/nat-overview",
+        ),
+        Rule(
+            id="idle_load_balancer",
+            title_de="Load Balancer ohne Backend",
+            title_en="Load balancer without backends",
+            severity="low",
+            query_file="idle_load_balancers.kql",
+            pricing="load_balancer",
+            why_de=(
+                "Ein Standard Load Balancer wird pro Stunde für seine Lastenausgleichs- und Ausgangsregeln "
+                "verrechnet, auch ohne Backend-Mitglieder. Ohne Regeln fällt keine Stundengebühr an; dann ist es "
+                "nur ein Hinweis."
+            ),
+            action_de=(
+                "Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder "
+                "Backends zugeordnet sind."
+            ),
+            command="az network lb delete --ids {id}",
+            docs_url="https://learn.microsoft.com/azure/load-balancer/load-balancer-overview",
+            quantity_unit_de="Regel(n)",
+        ),
     )
 }

@@ -54,6 +54,10 @@ MIN_TIER = {"S": 4}
 # Incremental snapshots are always stored on Standard HDD, so they carry a Standard_* SKU.
 SNAPSHOT_PRODUCTS = {"Standard": "Standard HDD Managed Disks", "Premium": "Premium SSD Managed Disks"}
 
+# Standard load balancer: one hourly meter covers the first 5 load-balancing + outbound rules, each further rule
+# bills the overage meter. Without rules there is no hourly charge (Azure pricing FAQ). Prices are global.
+LB_INCLUDED_RULES = 5
+
 PUBLIC_IP_METERS = {
     "Standard": "Standard IPv4 Static Public IP",
     "Basic": "Basic IPv4 Static Public IP Address",
@@ -158,6 +162,52 @@ def _app_service_plan_price(finding: Finding, fetch: PriceFetcher) -> tuple[floa
     return None, f"no App Service plan price for {finding.sku} ({'Linux' if linux else 'Windows'})"
 
 
+def _prefer_region(items: list[PriceItem], location: str) -> list[PriceItem]:
+    """Exact region first, then the 'Global' price list, then anything else (e.g. 'US Gov')."""
+    return sorted(items, key=lambda i: (i.get("armRegionName") != location, i.get("armRegionName") != "Global"))
+
+
+def _nat_gateway_price(finding: Finding, fetch: PriceFetcher) -> tuple[float | None, str]:
+    """Hourly gateway meter × 730; data processed is 0 when no subnet uses the gateway."""
+    meter = f"{finding.sku} Gateway"
+    items = [
+        i
+        for i in fetch(f"serviceName eq 'NAT Gateway' and priceType eq 'Consumption' and meterName eq '{meter}'")
+        if i.get("unitOfMeasure") == "1 Hour"
+    ]
+    if not items:
+        return None, f"no hourly NAT gateway price for SKU {finding.sku or 'unknown'}"
+    price = _prefer_region(items, finding.location)[0]["retailPrice"]
+    return price * HOURS_PER_MONTH, f"{price} €/h × {HOURS_PER_MONTH} h"
+
+
+def _load_balancer_price(finding: Finding, fetch: PriceFetcher) -> tuple[float | None, str]:
+    """Rules-based hourly price; a load balancer without rules bills nothing per hour (-> info finding)."""
+    rules = finding.quantity or 0
+    if rules == 0:
+        return 0.0, "no load-balancing or outbound rules: no hourly charge"
+    items = [
+        i
+        for i in fetch(f"serviceName eq 'Load Balancer' and priceType eq 'Consumption' and skuName eq '{finding.sku}'")
+        if i.get("unitOfMeasure") in ("1 Hour", "1/Hour")
+    ]
+
+    def meter(kind: str) -> float | None:
+        name = f"{finding.sku} {kind} LB Rules and Outbound Rules"  # the '... - Free' meters do not match
+        matches = _prefer_region([i for i in items if i.get("meterName") == name], finding.location)
+        return matches[0]["retailPrice"] if matches else None
+
+    included, overage = meter("Included"), meter("Overage")
+    extra = max(0, rules - LB_INCLUDED_RULES)
+    if included is None or (extra and overage is None):
+        return None, f"no load balancer rule price for SKU {finding.sku}"
+    hourly = included + extra * (overage or 0.0)
+    note = f"{included} €/h for up to {LB_INCLUDED_RULES} rules"
+    if extra:
+        note += f" + {extra} × {overage} €/h"
+    return hourly * HOURS_PER_MONTH, f"{note}, × {HOURS_PER_MONTH} h ({rules} rules)"
+
+
 # strategy name (registry.Rule.pricing) -> function
 STRATEGIES: dict[str, PricingStrategy] = {
     "vm_compute": _vm_price,
@@ -165,6 +215,8 @@ STRATEGIES: dict[str, PricingStrategy] = {
     "public_ip": _ip_price,
     "snapshot": _snapshot_price,
     "app_service_plan": _app_service_plan_price,
+    "nat_gateway": _nat_gateway_price,
+    "load_balancer": _load_balancer_price,
 }
 
 
@@ -173,6 +225,8 @@ def price_findings(findings: list[Finding], fetch: PriceFetcher) -> list[Finding
         cost, note = STRATEGIES[REGISTRY[f.rule].pricing](f, fetch)
         f.monthly_cost_eur = round(cost, 2) if cost is not None else None
         f.price_note = note
+        if cost == 0:
+            f.severity = "info"  # bills nothing, e.g. a load balancer without rules: only worth a note
     return findings
 
 

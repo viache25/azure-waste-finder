@@ -1,0 +1,10 @@
+// NAT gateways not attached to any subnet. The gateway bills per hour whether traffic flows or not;
+// its public IPs bill on top and are not reported as orphaned while the gateway holds them.
+Resources
+| where type =~ 'microsoft.network/natgateways'
+| where coalesce(array_length(properties.subnets), 0) == 0
+| project id, name, resourceGroup, location,
+          sku = tostring(sku.name),
+          publicIps = coalesce(array_length(properties.publicIpAddresses), 0)
+                    + coalesce(array_length(properties.publicIpPrefixes), 0),
+          tags

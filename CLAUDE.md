@@ -39,7 +39,8 @@ Windows: activate the venv with `.venv\Scripts\activate`; `scripts/stop-vm.ps1` 
 ```
 infra/                    Terraform: RG, 5 € budget alert, 3 waste resources (disk, VM, public IP)
   extra-waste.tf          opt-in waste for the newer rules, count = var.enable_extra_waste ? 1 : 0 (D3):
-                          incremental snapshot of the orphaned disk, empty B1 Linux App Service plan
+                          incremental snapshot of the orphaned disk, empty B1 Linux App Service plan,
+                          internal Standard load balancer without rules (free); no NAT gateway (~0.04 €/h)
   tests/*.tftest.hcl      terraform test, mock_provider "azurerm" + "tls"
   .tflint.hcl             tflint: recommended terraform preset + azurerm ruleset
 scripts/stop-vm.(ps1|sh)  `az vm stop` WITHOUT deallocate (Terraform can't leave a VM "stopped")
@@ -92,6 +93,8 @@ The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titl
 - **Age-based rules** (`old_snapshot`): the KQL projects `ageDays`, computed by Resource Graph with `now()`, so demo rows carry a fixed `ageDays` and stay stable over time. `find_waste` drops rows younger than `Settings.min_age_days[rule]` before they become findings (they are not counted as ignored). `Finding.age_days` shows up in the report and in JSON/CSV (`age_days`, schema 1.1).
 - **Snapshots** are priced per GB-month of the snapshot meter (`Snapshots LRS|ZRS` of the Standard HDD or Premium SSD product) × provisioned size: an upper bound, Azure bills the used size and Resource Graph does not expose it.
 - **App Service plans** are priced from one Retail API call per region (`serviceName eq 'Azure App Service'`), matched in Python: hourly unit, product ends with ` - Linux` for Linux plans, `skuName` without spaces = ARM `sku.name` (`P1 v3` vs `P1v3`); × 730 × instances (`quantity`, from `sku.capacity`). Elastic Premium / Workflow Standard plans have no such meter and stay unpriced.
+- **Idle network** (verified against the Retail API): NAT gateways bill the hourly `<sku> Gateway` meter even without subnets or traffic (no hourly meter for StandardV2: unpriced). Standard load balancers bill only for rules (`Standard Included LB Rules and Outbound Rules` for the first 5, `... Overage ...` per further rule; the `... - Free` meters are not used); no rules = no hourly charge. Both price lists are global (`armRegionName` 'Global'), so pricing prefers the exact region, then 'Global'. The LB query counts backend members with `mv-expand` (Resource Graph has no `mv-apply`) and projects the rule count as `quantity`.
+- **Free findings**: `price_findings` sets `severity = "info"` for every finding priced at exactly 0 (e.g. a load balancer without rules); unpriced (`None`) findings keep their severity.
 - **Checkov and opt-in resources**: resources behind `count = var.enable_extra_waste ? 1 : 0` are not evaluated with the default variables, so CI does not scan them. Check them locally with a tfvars file that sets `enable_extra_waste = true` (`checkov -d infra --var-file <file>`) before adding inline skips.
 - **"Stopped" ≠ "deallocated"**: the VM rule matches `PowerState/stopped` only; deallocated VMs don't bill compute.
 - **Lint/types**: code passes `ruff` and `mypy --strict` (config in `pyproject.toml`) without blanket ignores; Resource Graph rows are `rules.Row`, price items `pricing.PriceItem`, pricing functions `pricing.PricingStrategy` (both `dict[str, Any]`).

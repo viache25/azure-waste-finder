@@ -22,5 +22,12 @@
   "empty_app_service_plan": [
     {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-intranet/providers/Microsoft.Web/serverfarms/asp-intranet-legacy", "name": "asp-intranet-legacy", "resourceGroup": "rg-intranet", "location": "westeurope", "sku": "S1", "tier": "Standard", "osType": "Windows", "quantity": 2, "tags": {"owner": "intranet-team"}},
     {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Web/serverfarms/awf-empty-plan", "name": "awf-empty-plan", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "B1", "tier": "Basic", "osType": "Linux", "quantity": 1, "tags": {"project": "azure-waste-finder"}}
+  ],
+  "idle_nat_gateway": [
+    {"id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-network-old/providers/Microsoft.Network/natGateways/natgw-old-hub", "name": "natgw-old-hub", "resourceGroup": "rg-network-old", "location": "westeurope", "sku": "Standard", "publicIps": 1, "tags": {"owner": "network-team"}}
+  ],
+  "idle_load_balancer": [
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/loadBalancers/lb-web-old", "name": "lb-web-old", "resourceGroup": "rg-web-old", "location": "westeurope", "sku": "Standard", "quantity": 2, "tags": {}},
+    {"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/loadBalancers/awf-idle-lb", "name": "awf-idle-lb", "resourceGroup": "awf-waste-demo-rg", "location": "westeurope", "sku": "Standard", "quantity": 0, "tags": {"project": "azure-waste-finder"}}
   ]
 }

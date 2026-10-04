@@ -16,5 +16,6 @@ output "expected_findings" {
     # Opt-in (enable_extra_waste); null when disabled.
     old_snapshot           = one(azurerm_snapshot.old[*].name)
     empty_app_service_plan = one(azurerm_service_plan.empty[*].name)
+    idle_load_balancer     = one(azurerm_lb.idle[*].name)
   }
 }

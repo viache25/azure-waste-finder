@@ -139,6 +139,11 @@ run "extra_waste_off_by_default" {
     condition     = length(azurerm_service_plan.empty) == 0 && output.expected_findings.empty_app_service_plan == null
     error_message = "The empty App Service plan must be opt-in (enable_extra_waste)."
   }
+
+  assert {
+    condition     = length(azurerm_lb.idle) == 0 && length(azurerm_lb_backend_address_pool.idle) == 0 && output.expected_findings.idle_load_balancer == null
+    error_message = "The idle load balancer must be opt-in (enable_extra_waste)."
+  }
 }
 
 run "extra_waste_snapshot" {
@@ -213,5 +218,38 @@ run "extra_waste_app_service_plan" {
   assert {
     condition     = output.expected_findings.empty_app_service_plan == "test-empty-plan"
     error_message = "expected_findings must list the plan when extra waste is enabled."
+  }
+}
+
+run "extra_waste_idle_load_balancer" {
+  command = plan
+
+  variables {
+    enable_extra_waste = true
+  }
+
+  assert {
+    condition     = length(azurerm_lb.idle) == 1 && azurerm_lb.idle[0].sku == "Standard"
+    error_message = "enable_extra_waste = true must create one Standard load balancer."
+  }
+
+  assert {
+    condition     = alltrue([for fe in azurerm_lb.idle[0].frontend_ip_configuration : fe.public_ip_address_id == null && fe.private_ip_address_allocation == "Dynamic"])
+    error_message = "The idle load balancer must be internal: a private frontend and no public IP (which would bill)."
+  }
+
+  assert {
+    condition     = length(azurerm_lb_backend_address_pool.idle) == 1
+    error_message = "The idle load balancer gets one backend pool, and it stays empty."
+  }
+
+  assert {
+    condition     = azurerm_lb.idle[0].tags == tomap({ project = "azure-waste-finder", purpose = "waste-demo", managed_by = "terraform" })
+    error_message = "The load balancer must carry the project, purpose and managed_by tags."
+  }
+
+  assert {
+    condition     = output.expected_findings.idle_load_balancer == "test-idle-lb"
+    error_message = "expected_findings must list the load balancer when extra waste is enabled."
   }
 }

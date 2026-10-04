@@ -1,0 +1,18 @@
+// Standard load balancers whose backend pools have no members (or that have no pool at all).
+// They bill per hour only for load-balancing and outbound rules, so the rule count is projected as quantity.
+Resources
+| where type =~ 'microsoft.network/loadbalancers'
+| where tostring(sku.name) =~ 'Standard'
+| extend rules = coalesce(array_length(properties.loadBalancingRules), 0)
+               + coalesce(array_length(properties.outboundRules), 0)
+// mv-expand drops rows with an empty array, so a load balancer without pools gets one empty pool.
+| mv-expand pool = iff(coalesce(array_length(properties.backendAddressPools), 0) == 0,
+                       dynamic([{}]), properties.backendAddressPools)
+| extend poolMembers = coalesce(array_length(pool.properties.backendIPConfigurations), 0)
+                     + coalesce(array_length(pool.properties.loadBalancerBackendAddresses), 0)
+| summarize members = sum(poolMembers)
+    by id, name, resourceGroup, location, sku = tostring(sku.name), rules, tagsJson = tostring(tags)
+| where members == 0
+| project id, name, resourceGroup, location, sku,
+          quantity = rules,
+          tags = parse_json(tagsJson)

@@ -139,3 +139,55 @@ def test_app_service_plan_without_price(sku, os_type):
     [f] = price_findings([make("empty_app_service_plan", sku, os_type=os_type, quantity=1)], demo_fetcher())
     assert f.monthly_cost_eur is None
     assert f"no App Service plan price for {sku} (Windows)" in f.price_note
+
+
+def test_nat_gateway_bills_per_hour_with_global_price():
+    [f] = price_findings([make("idle_nat_gateway", "Standard")], demo_fetcher())
+    assert f.monthly_cost_eur == round(0.0396 * 730, 2)  # 'Global' price, not the 'US Gov' one
+    assert f.severity == "medium"
+
+
+@pytest.mark.parametrize("sku", ["StandardV2", ""])
+def test_nat_gateway_without_hourly_meter_is_unpriced(sku):
+    [f] = price_findings([make("idle_nat_gateway", sku)], demo_fetcher())
+    assert f.monthly_cost_eur is None and "no hourly NAT gateway price" in f.price_note
+
+
+@pytest.mark.parametrize(
+    ("rules", "expected"),
+    [
+        (1, round(0.022 * 730, 2)),
+        (5, round(0.022 * 730, 2)),  # the first 5 rules share one hourly meter
+        (7, round((0.022 + 2 * 0.0088) * 730, 2)),  # each further rule bills the overage meter
+    ],
+)
+def test_load_balancer_bills_for_rules(rules, expected):
+    [f] = price_findings([make("idle_load_balancer", "Standard", quantity=rules, severity="low")], demo_fetcher())
+    assert f.monthly_cost_eur == expected and f.severity == "low"  # billed: keeps the rule severity
+    assert f"({rules} rules)" in f.price_note
+
+
+@pytest.mark.parametrize("rules", [0, None])
+def test_load_balancer_without_rules_is_free_info_finding(rules):
+    [f] = price_findings([make("idle_load_balancer", "Standard", quantity=rules, severity="low")], demo_fetcher())
+    assert f.monthly_cost_eur == 0.0 and f.severity == "info"
+    assert "no hourly charge" in f.price_note
+
+
+def test_load_balancer_without_price():
+    [f] = price_findings([make("idle_load_balancer", "Gateway", quantity=1)], demo_fetcher())
+    assert f.monthly_cost_eur is None and "no load balancer rule price for SKU Gateway" in f.price_note
+
+
+def test_load_balancer_overage_needs_its_meter():
+    def fetch(odata_filter):
+        return [i for i in demo_fetcher()(odata_filter) if "Overage" not in i["meterName"]]
+
+    [few] = price_findings([make("idle_load_balancer", "Standard", quantity=3)], fetch)
+    [many] = price_findings([make("idle_load_balancer", "Standard", quantity=6)], fetch)
+    assert few.monthly_cost_eur == round(0.022 * 730, 2) and many.monthly_cost_eur is None
+
+
+def test_only_free_findings_become_info():
+    [unpriced] = price_findings([make("stopped_vm", "Standard_Unknown", severity="high")], demo_fetcher())
+    assert unpriced.severity == "high"

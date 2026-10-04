@@ -62,8 +62,8 @@ def test_demo_json_matches_schema(demo_reports):
     jsonschema.validate(data, SCHEMA, format_checker=jsonschema.FormatChecker())
     assert data["schema_version"] == SCHEMA_VERSION
     assert data["demo"] is True and data["currency"] == "EUR"
-    assert data["summary"]["monthly_savings"] == 412.36 and data["summary"]["ignored"] == 1
-    assert len(data["findings"]) == data["summary"]["count"] == 11
+    assert data["summary"]["monthly_savings"] == 457.33 and data["summary"]["ignored"] == 1
+    assert len(data["findings"]) == data["summary"]["count"] == 14
     savings = [f["monthly_savings"] for f in data["findings"]]
     assert savings == sorted(savings, reverse=True)
 
@@ -105,7 +105,7 @@ def test_sarif_structure(demo_reports):
     rules = run["tool"]["driver"]["rules"]
     assert [r["id"] for r in rules] == list(REGISTRY)
     assert all(r["helpUri"].startswith("https://learn.microsoft.com/") for r in rules)
-    assert len(run["results"]) == 11
+    assert len(run["results"]) == 14
     for result in run["results"]:
         assert rules[result["ruleIndex"]]["id"] == result["ruleId"]
         location = result["locations"][0]
@@ -151,7 +151,7 @@ def test_summary_is_appended(tmp_path):
     args = ["--demo", "--out-dir", str(tmp_path / "out"), "--summary", str(summary), "--fail-over", "500"]
     assert main(args) == 0
     text = summary.read_text(encoding="utf-8")
-    assert text.startswith("# Earlier step\n### Azure Kostencheck: ca. 412,36 €")
+    assert text.startswith("# Earlier step\n### Azure Kostencheck: ca. 457,33 €")
     assert "**eingehalten**" in text
 
 
@@ -161,7 +161,7 @@ def test_empty_summary_path_is_skipped(tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["out"]
 
 
-@pytest.mark.parametrize(("fail_over", "code"), [("412.36", 0), ("412", EXIT_OVER_THRESHOLD), ("0", 3)])
+@pytest.mark.parametrize(("fail_over", "code"), [("457.33", 0), ("457", EXIT_OVER_THRESHOLD), ("0", 3)])
 def test_fail_over_exit_code(tmp_path, capsys, fail_over, code):
     assert main(["--demo", "--out-dir", str(tmp_path), "--fail-over", fail_over]) == code
     assert ("above --fail-over" in capsys.readouterr().err) == (code == 3)
@@ -209,3 +209,12 @@ def test_plan_instances_in_json_csv_and_report(demo_reports):
 def test_quantity_needs_a_unit_to_be_shown():
     f = Finding("stopped_vm", f"{SUB}/virtualMachines/vm1", "vm1", "rg", "we", "B1s", quantity=3, monthly_cost_eur=1)
     assert "B1s, 3" not in render([f], "x", "md")
+
+
+def test_load_balancer_without_rules_is_a_free_info_finding(demo_reports):
+    data = json.loads((demo_reports / "report.json").read_text(encoding="utf-8"))
+    lb = next(f for f in data["findings"] if f["name"] == "awf-idle-lb")
+    assert (lb["severity"], lb["monthly_cost"], lb["quantity"]) == ("info", 0.0, 0)
+    sarif = json.loads((demo_reports / "report.sarif").read_text(encoding="utf-8"))
+    result = next(r for r in sarif["runs"][0]["results"] if "awf-idle-lb" in r["message"]["text"])
+    assert result["level"] == "note"

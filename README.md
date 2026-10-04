@@ -24,6 +24,10 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 | Orphaned public IP | low | Standard public IPs are billed per hour even without an association | `az network public-ip delete` unless intentionally reserved |
 | Old disk snapshot | low | Snapshots are billed per GB-month for as long as they exist, even after the source disk is gone. Reported when older than 30 days (`--snapshot-min-age`); priced at the provisioned size, an upper bound because Azure bills the used size | Keep it only if it is still a needed backup, else `az snapshot delete` |
 | Empty App Service plan | medium | A plan on a paid tier (Basic and up) bills per instance and hour even without any app. Free/Shared plans and Consumption plans are not reported | `az appservice plan delete`, or scale it down to Free (F1) |
+| NAT gateway without subnet | medium | The gateway bills per hour (Retail API meter `Standard Gateway`) whether traffic flows or not; its public IPs bill on top | `az network nat gateway delete`, then check the freed public IPs |
+| Load balancer without backends | low, or info | A Standard load balancer with empty backend pools still bills per hour for its load-balancing and outbound rules (first 5 rules one meter, then per rule). Without rules there is no hourly charge, so the finding costs 0 and becomes `info` | `az network lb delete`, or remove the rules until backends return |
+
+A finding whose resource bills nothing (price 0) is always reported with severity `info`.
 
 Rules are data: each one is a single entry in `registry.py` (German and English title, severity, KQL file, pricing strategy, remediation text and `az` command, docs link) plus a KQL file. The report shows the severity, a docs link per rule and the exact `az` command per finding; the tool itself never runs them.
 
@@ -56,7 +60,7 @@ src/waste_finder/
   export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (166 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (187 tests), runs fully offline, coverage floor 95 %
 docs/report.schema.json   JSON Schema of report.json
 ```
 
@@ -113,6 +117,7 @@ The demo environment uses the smallest SKUs (B1s VM, 32 GB Standard HDD, one Sta
 |---|---|---|
 | Incremental snapshot of the orphaned 32 GB disk | `old_snapshot` | at most 0.002 €/h (0.044 € per GB-month × 32 GB; the disk is empty, so in practice close to 0) |
 | Empty App Service plan, B1 Linux, 1 instance | `empty_app_service_plan` | about 0.016 €/h (~11.50 € per month) |
+| Internal Standard load balancer, empty backend pool, no rules | `idle_load_balancer` (info, 0 €) | 0 €/h: no rules, no hourly charge, no data processed |
 
 Snapshots are only reported once they are 30 days old; right after `apply`, run the finder with `--snapshot-min-age 0` to see it.
 
@@ -139,7 +144,7 @@ waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 abov
 | `--subscription ID` | Subscription to scan; repeat for several. Default `$AZURE_SUBSCRIPTION_ID` |
 | `--all-subscriptions` | Every subscription the credential can read (Resource Graph at tenant scope) |
 | `--management-group ID` | All subscriptions below this management group |
-| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`, `empty_app_service_plan`) |
+| `--rules A,B` | Run only these rules (ids: `unattached_disk`, `stopped_vm`, `orphaned_public_ip`, `old_snapshot`, `empty_app_service_plan`, `idle_nat_gateway`, `idle_load_balancer`) |
 | `--exclude PATTERN` | Ignore resources whose ID matches the glob (case-insensitive); repeatable |
 | `--min-savings AMOUNT` | Leave out findings that save less per month; unpriced findings stay in |
 | `--snapshot-min-age DAYS` | `old_snapshot` reports snapshots at least this many days old (default 30; age from the snapshot's creation time) |
@@ -227,7 +232,7 @@ Dependabot opens weekly PRs for pip, GitHub Actions and Terraform providers: min
 
 ## Roadmap
 
-The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (idle network resources, downgrade candidates, free clean-up findings), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
+The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules (downgrade candidates, free clean-up findings), actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
 
 ## License
 

@@ -129,7 +129,7 @@ def test_cli_real_run_uses_azure_runner_and_retail_api(monkeypatch, tmp_path, ca
     assert used["scope"] == Scope(subscriptions=("sub-1", "sub-2"))
     assert (used["cache_file"].name, used["currency"]) == ("prices-eur.json", "EUR")
     assert "sub-1, sub-2" in (tmp_path / "report.md").read_text(encoding="utf-8")
-    assert "11 findings" in capsys.readouterr().out
+    assert "14 findings" in capsys.readouterr().out
 
 
 @pytest.fixture

@@ -38,12 +38,12 @@
 <div class="demo"><strong>Demo-Daten:</strong> fiktive Subscriptions und Beispielpreise, keine echte Umgebung.</div>
   <div class="total">
     Sie verlieren ca.
-    <div class="big">412,36 € pro Monat</div>
-    ≈ 4.948,32 € pro Jahr durch 11 ungenutzte Ressourcen.
+    <div class="big">457,33 € pro Monat</div>
+    ≈ 5.487,96 € pro Jahr durch 14 ungenutzte Ressourcen.
 <br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).  </div>
 
   <h2>Subscription <code>11111111-1111-1111-1111-111111111111</code></h2>
-  <p>Ca. <strong>366,78 € pro Monat</strong> durch 4 Ressource(n).</p>
+  <p>Ca. <strong>395,69 € pro Monat</strong> durch 5 Ressource(n).</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
@@ -76,6 +76,15 @@
         <td>Bei Bedarf Snapshot erstellen, dann Disk löschen.<br><code class="cmd">az disk delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-legacy-erp/providers/Microsoft.Compute/disks/erp-db-old-data</code></td>
       </tr>
       <tr>
+        <td><code>natgw-old-hub</code></td>
+        <td>NAT-Gateway ohne Subnetz</td>
+        <td><span class="sev sev-medium">mittel</span></td>
+        <td>rg-network-old</td>
+        <td>Standard</td>
+        <td class="num">28,91 €</td>
+        <td>NAT-Gateway löschen, wenn kein Subnetz es mehr braucht; danach die frei gewordenen öffentlichen IPs prüfen.<br><code class="cmd">az network nat gateway delete --ids /subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-network-old/providers/Microsoft.Network/natGateways/natgw-old-hub</code></td>
+      </tr>
+      <tr>
         <td><code>erp-db-before-migration</code></td>
         <td>Alter Disk-Snapshot</td>
         <td><span class="sev sev-low">niedrig</span></td>
@@ -88,7 +97,7 @@
   </table>
   </div>
   <h2>Subscription <code>00000000-0000-0000-0000-000000000000</code></h2>
-  <p>Ca. <strong>45,58 € pro Monat</strong> durch 7 Ressource(n).</p>
+  <p>Ca. <strong>61,64 € pro Monat</strong> durch 9 Ressource(n).</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">€/Monat</th><th>Empfehlung</th></tr></thead>
@@ -101,6 +110,15 @@
         <td>Premium_LRS (128 GB), 124 Tage alt</td>
         <td class="num">16,33 €</td>
         <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Compute/snapshots/web-os-before-upgrade</code></td>
+      </tr>
+      <tr>
+        <td><code>lb-web-old</code></td>
+        <td>Load Balancer ohne Backend</td>
+        <td><span class="sev sev-low">niedrig</span></td>
+        <td>rg-web-old</td>
+        <td>Standard, 2 Regel(n)</td>
+        <td class="num">16,06 €</td>
+        <td>Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder Backends zugeordnet sind.<br><code class="cmd">az network lb delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-web-old/providers/Microsoft.Network/loadBalancers/lb-web-old</code></td>
       </tr>
       <tr>
         <td><code>awf-empty-plan</code></td>
@@ -156,6 +174,15 @@
         <td class="num">1,41 €</td>
         <td>Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen.<br><code class="cmd">az snapshot delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Compute/snapshots/awf-old-snapshot</code></td>
       </tr>
+      <tr>
+        <td><code>awf-idle-lb</code></td>
+        <td>Load Balancer ohne Backend</td>
+        <td><span class="sev sev-info">info</span></td>
+        <td>awf-waste-demo-rg</td>
+        <td>Standard, 0 Regel(n)</td>
+        <td class="num">0,00 €</td>
+        <td>Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder Backends zugeordnet sind.<br><code class="cmd">az network lb delete --ids /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-waste-demo-rg/providers/Microsoft.Network/loadBalancers/awf-idle-lb</code></td>
+      </tr>
     </tbody>
   </table>
   </div>
@@ -167,6 +194,8 @@
     <li><strong>Ungenutzte öffentliche IP-Adresse:</strong> Standard-IPs werden pro Stunde verrechnet, auch ohne Zuordnung. (<a href="https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses">Doku</a>)</li>
     <li><strong>Alter Disk-Snapshot:</strong> Snapshots werden pro GB und Monat verrechnet, solange sie existieren, auch wenn die Quell-Disk längst gelöscht ist. Geschätzt mit der bereitgestellten Größe (Obergrenze; verrechnet wird die belegte Größe). (<a href="https://learn.microsoft.com/azure/virtual-machines/disks-understand-billing">Doku</a>)</li>
     <li><strong>Leerer App-Service-Plan:</strong> Ein App-Service-Plan wird pro Instanz und Stunde verrechnet, auch wenn keine App darauf läuft. (<a href="https://learn.microsoft.com/azure/app-service/overview-hosting-plans">Doku</a>)</li>
+    <li><strong>NAT-Gateway ohne Subnetz:</strong> Ein NAT-Gateway wird pro Stunde verrechnet, auch wenn kein Subnetz es nutzt und kein Datenverkehr fließt; die zugeordneten öffentlichen IPs kosten zusätzlich. (<a href="https://learn.microsoft.com/azure/nat-gateway/nat-overview">Doku</a>)</li>
+    <li><strong>Load Balancer ohne Backend:</strong> Ein Standard Load Balancer wird pro Stunde für seine Lastenausgleichs- und Ausgangsregeln verrechnet, auch ohne Backend-Mitglieder. Ohne Regeln fällt keine Stundengebühr an; dann ist es nur ein Hinweis. (<a href="https://learn.microsoft.com/azure/load-balancer/load-balancer-overview">Doku</a>)</li>
   </ul>
 
   <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>

@@ -35,3 +35,29 @@ resource "azurerm_service_plan" "empty" {
   worker_count        = 1
   tags                = local.tags
 }
+
+# Standard load balancer with an empty backend pool and no rules. Internal (private frontend in the demo
+# subnet), so no public IP is needed. Without rules Azure charges nothing per hour: waste-finder reports
+# it as a free "info" finding. Adding a load-balancing rule would make it bill (~0.022 €/h).
+resource "azurerm_lb" "idle" {
+  count = var.enable_extra_waste ? 1 : 0
+
+  name                = "${var.prefix}-idle-lb"
+  resource_group_name = azurerm_resource_group.demo.name
+  location            = azurerm_resource_group.demo.location
+  sku                 = "Standard"
+  tags                = local.tags
+
+  frontend_ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.demo.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+resource "azurerm_lb_backend_address_pool" "idle" {
+  count = var.enable_extra_waste ? 1 : 0
+
+  name            = "empty"
+  loadbalancer_id = azurerm_lb.idle[0].id
+}

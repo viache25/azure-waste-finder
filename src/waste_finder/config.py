@@ -6,6 +6,7 @@ Example file:
     exclude = ["/subscriptions/*/resourceGroups/rg-sandbox/*"]
     currency = "EUR"
     formats = ["md", "html", "json"]                 # default: md, html
+    cost_source = "retail"                           # or "actual": Cost Management, retail as fallback
 
     [thresholds]
     min_monthly_savings = 1.0                        # leave out findings that save less per month
@@ -37,7 +38,11 @@ CURRENCIES = frozenset(
     {"USD", "AUD", "BRL", "CAD", "CHF", "CNY", "DKK", "EUR", "GBP", "INR", "JPY", "KRW", "NOK", "NZD", "SEK", "TWD"}
 )
 
-TOP_LEVEL_KEYS = {"rules", "exclude", "currency", "formats", "thresholds"}
+# retail = list prices (Retail Prices API); actual = amortized costs of the last 30 days (Cost Management Query API),
+# with the retail price as per-finding fallback.
+COST_SOURCES = ("retail", "actual")
+
+TOP_LEVEL_KEYS = {"rules", "exclude", "currency", "formats", "cost_source", "thresholds"}
 THRESHOLD_KEYS = {"min_monthly_savings", "fail_over", "snapshot_min_age_days", "downgrade_lookback_days"}
 
 
@@ -55,6 +60,7 @@ class Settings:
     fail_over: float | None = None  # exit code 3 when the monthly total is above this
     snapshot_min_age_days: int = 30  # old_snapshot reports snapshots at least this many days old
     downgrade_lookback_days: int = 30  # premium_disk_deallocated_vm: VM deallocated for at least this many days
+    cost_source: str = "retail"  # one of COST_SOURCES
     source: str = field(default="defaults", compare=False)  # where the file values came from, for messages
 
     @property
@@ -91,6 +97,13 @@ def parse_formats(value: Iterable[str]) -> tuple[str, ...]:
     if not formats:
         raise ConfigError("no output format selected")
     return formats
+
+
+def parse_cost_source(value: Any) -> str:
+    source = value.strip().lower() if isinstance(value, str) else value
+    if source not in COST_SOURCES:
+        raise ConfigError(f"cost_source must be one of {', '.join(COST_SOURCES)}, got {value!r}")
+    return str(source)
 
 
 def parse_amount(value: Any, name: str = "min_monthly_savings") -> float:
@@ -150,6 +163,8 @@ def load_config(path: Path) -> dict[str, Any]:
         values["currency"] = parse_currency(data["currency"])
     if "formats" in data:
         values["formats"] = parse_formats(_string_list(data, "formats"))
+    if "cost_source" in data:
+        values["cost_source"] = parse_cost_source(data["cost_source"])
     if "thresholds" in data:
         thresholds = data["thresholds"]
         if not isinstance(thresholds, dict) or set(thresholds) - THRESHOLD_KEYS:

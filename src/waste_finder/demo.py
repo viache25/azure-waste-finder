@@ -1,4 +1,4 @@
-"""Offline data for --demo and tests: a fake subscription and a small price list."""
+"""Offline data for --demo and tests: fake subscriptions, a small price list and Cost Management answers."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import re
 from importlib import resources
 from typing import Any
 
+from waste_finder.costs import ActualCosts, CostQuery, parse_query_result
 from waste_finder.pricing import PriceFetcher, PriceItem
 from waste_finder.registry import REGISTRY
 from waste_finder.rules import QueryRunner, Row, load_query
@@ -36,3 +37,13 @@ def demo_fetcher() -> PriceFetcher:
         return [i for i in items if all(i.get(k) == v for k, v in conditions)]
 
     return fetch
+
+
+def demo_cost_query() -> CostQuery:
+    """Recorded-format Cost Management answers per demo subscription (--demo --cost-source actual)."""
+    responses = _load("cost_management.json")
+
+    def query(subscription_id: str) -> ActualCosts:
+        return parse_query_result(responses[subscription_id]) if subscription_id in responses else {}
+
+    return query

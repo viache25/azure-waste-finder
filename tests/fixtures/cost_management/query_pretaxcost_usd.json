@@ -1,0 +1,19 @@
+{
+  "id": "subscriptions/33333333-3333-3333-3333-333333333333/providers/Microsoft.CostManagement/query/0b0e8f8a-6a43-4c7e-bb0b-7f9f1c1d4e21",
+  "name": "0b0e8f8a-6a43-4c7e-bb0b-7f9f1c1d4e21",
+  "type": "Microsoft.CostManagement/query",
+  "location": null,
+  "sku": null,
+  "eTag": null,
+  "properties": {
+    "nextLink": null,
+    "columns": [
+      {"name": "PreTaxCost", "type": "Number"},
+      {"name": "ResourceId", "type": "String"},
+      {"name": "Currency", "type": "String"}
+    ],
+    "rows": [
+      [9.4608, "/subscriptions/33333333-3333-3333-3333-333333333333/resourcegroups/rg-x/providers/microsoft.compute/virtualmachines/vm-x", "USD"]
+    ]
+  }
+}

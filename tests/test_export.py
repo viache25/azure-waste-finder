@@ -194,8 +194,9 @@ def test_schema_still_accepts_1_0_reports_without_age():
     data = json.loads(render_json(findings(), summarize(findings()), RunInfo("x")))
     data["schema_version"] = "1.0"
     for f in data["findings"]:
-        del f["age_days"], f["quantity"]
-    del data["cleanup"], data["summary"]["cleanup"]
+        del f["age_days"], f["quantity"], f["cost_source"]
+    del data["cleanup"], data["summary"]["cleanup"], data["summary"]["actual_costs"]
+    del data["cost_source"], data["cost_period"]
     jsonschema.validate(data, SCHEMA)
 
 

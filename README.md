@@ -45,6 +45,7 @@ flowchart LR
     AZ -->|KQL queries| RG[rules.py<br/>Resource Graph]
     CFG[config.py<br/>waste-finder.toml + flags] -.-> RG
     RG -->|Findings minus ignored| PR[pricing.py<br/>Retail Prices API]
+    CM[costs.py<br/>Cost Management<br/>--cost-source actual] -.->|actual € replace list €| PR
     PR -->|€ per month| RP[report.py<br/>Markdown + HTML]
     PR -->|€ per month| EX[export.py<br/>JSON, CSV, SARIF]
 ```
@@ -60,18 +61,20 @@ src/waste_finder/
   rules.py                runs the queries over the chosen scope -> list[Finding]
   config.py               waste-finder.toml + CLI flags: rules, exclusions, threshold, currency
   pricing.py              pricing strategies: Retail Prices API -> €/month per finding (cached 24 h)
+  costs.py                --cost-source actual: Cost Management Query API, amortized cost per resource
   report.py, templates/   German client report (Markdown + HTML)
   export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
   demo/                   fictional subscription + sample prices for --demo and tests
-tests/                    pytest (235 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (270 tests), runs fully offline, coverage floor 95 %
+  fixtures/               recorded-format API responses (Cost Management)
 docs/report.schema.json   JSON Schema of report.json
 ```
 
 Design choices:
 
 - **Resource Graph instead of listing resources per service**: one query language across all resource types and subscriptions, fast even for large tenants.
-- **Retail Prices API**: public, no login, returns EUR. These are list prices; real prices can be lower with EA/CSP discounts, reservations or Azure Hybrid Benefit. The report says so.
+- **Retail Prices API**: public, no login, returns EUR. These are list prices; real prices can be lower with EA/CSP discounts, reservations or Azure Hybrid Benefit. The report says so. `--cost-source actual` uses what each resource really cost instead (see [Actual costs](#actual-costs-from-cost-management)).
 - **Pluggable runners**: the rules and the pricing take a query/fetch function, so tests and `--demo` run without Azure.
 - **Cost vs. savings**: a finding carries what the resource costs now and, optionally, what acting on it saves (e.g. a downgrade). The report total is the sum of savings, which default to the full cost; the tables show both columns, and the summary also gives the total cost when it differs.
 - **Monthly estimate** uses 730 hours, the same convention the Azure pricing calculator uses.
@@ -140,6 +143,7 @@ waste-finder --min-savings 5                                  # leave out findin
 waste-finder --snapshot-min-age 90                            # report disk snapshots older than 90 days (default 30)
 waste-finder --downgrade-lookback 14                          # SSD disks of VMs deallocated for 14+ days (default 30)
 waste-finder --currency CHF                                   # Retail API currency (default EUR)
+waste-finder --cost-source actual                             # actual costs from Cost Management, retail as fallback
 waste-finder --config path/to/waste-finder.toml               # default: ./waste-finder.toml if present
 waste-finder --format md,html,json,csv,sarif                  # output formats (default md,html)
 waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 above 100 per month; CI summary
@@ -156,6 +160,7 @@ waste-finder --fail-over 100 --summary "$GITHUB_STEP_SUMMARY" # exit code 3 abov
 | `--snapshot-min-age DAYS` | `old_snapshot` reports snapshots at least this many days old (default 30; age from the snapshot's creation time) |
 | `--downgrade-lookback DAYS` | `premium_disk_deallocated_vm` reports SSD disks whose VM has been deallocated for at least this many days (default 30) |
 | `--currency CODE` | Currency for list prices, e.g. `EUR`, `CHF`, `USD` (`--demo` always uses its EUR sample prices) |
+| `--cost-source SOURCE` | `retail` (default): list prices from the Retail Prices API. `actual`: amortized cost of the last 30 days from Cost Management, retail price as fallback per finding (see below) |
 | `--format A,B` | Output formats: `md`, `html`, `json`, `csv`, `sarif` (default `md,html`); written as `report.<format>` |
 | `--fail-over AMOUNT` | Exit with code 3 when the monthly waste is above this amount (reports are still written) |
 | `--summary FILE` | Append a short Markdown summary to this file, e.g. `$GITHUB_STEP_SUMMARY`; an empty value is ignored |
@@ -174,6 +179,7 @@ rules = ["unattached_disk", "stopped_vm", "old_snapshot"]   # default: all rules
 exclude = ["/subscriptions/*/resourceGroups/rg-sandbox/*"]
 currency = "EUR"
 formats = ["md", "html", "json"]   # default: md, html
+cost_source = "retail"             # or "actual" (Cost Management, retail as fallback)
 
 [thresholds]
 min_monthly_savings = 1.0
@@ -182,13 +188,28 @@ snapshot_min_age_days = 30         # old_snapshot: only snapshots at least this 
 downgrade_lookback_days = 30       # premium_disk_deallocated_vm: VM deallocated at least this long
 ```
 
+## Actual costs from Cost Management
+
+List prices ignore discounts, reservations and savings plans, and snapshots are priced at their provisioned size. `--cost-source actual` (or `cost_source = "actual"`) asks the [Cost Management Query API](https://learn.microsoft.com/rest/api/cost-management/query/usage) what each resource really cost:
+
+- **One query per subscription that has findings**: `AmortizedCost` (reservations and savings plans spread over the resources that use them) of the **last 30 full days**, grouped by resource ID. The 30-day sum is shown as the monthly amount.
+- **Fallback per finding**: a finding keeps its retail price when Cost Management has no row for it (e.g. a resource created in the last day; cost data lags by up to 24 h), when the row is in another currency than the report (set `--currency` to your billing currency), or when the query for its subscription fails (a warning names the subscription and the reason). A downgrade finding keeps the retail ratio of savings to cost.
+- **The report says where each number comes from**: a "Quelle" column (`Ist-Kosten` or `Listenpreis`), a line with the count of actual amounts and the period, and a footer explaining both. JSON has `cost_source` per finding plus `cost_source`, `cost_period` and `summary.actual_costs` for the run; CSV and SARIF carry the source too.
+- **Required role**: **Cost Management Reader** on each subscription, the least-privilege role for cost data (the built-in Reader role, which Resource Graph needs anyway, covers cost data too). A 401/403 answer names the role in the warning. On Enterprise Agreements the enterprise administrator must also have enabled "view charges" for account and subscription owners.
+
+```bash
+az role assignment create --assignee <user-or-app-id> --role "Cost Management Reader" --scope /subscriptions/<id>
+waste-finder --subscription <id> --cost-source actual
+waste-finder --demo --cost-source actual      # offline, with recorded-format Cost Management answers
+```
+
 ## Output formats and exit codes
 
 | Format | File | Use |
 |---|---|---|
 | `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription, plus the section "Aufräumen (kostenlos)" for free findings |
-| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.3`; 1.1 added `age_days`, 1.2 `quantity`, 1.3 the `cleanup` list and `summary.cleanup`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
-| `csv` | `report.csv` | One row per finding, free clean-up findings last (subscription, resource group, rule, severity, age, quantity, cost, savings, currency, resource ID, `az` command) for Excel |
+| `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.4`; 1.1 added `age_days`, 1.2 `quantity`, 1.3 the `cleanup` list and `summary.cleanup`, 1.4 `cost_source`, `cost_period` and `summary.actual_costs`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
+| `csv` | `report.csv` | One row per finding, free clean-up findings last (subscription, resource group, rule, severity, age, quantity, cost, savings, currency, cost source, resource ID, `az` command) for Excel |
 | `sarif` | `report.sarif` | SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding, free clean-up findings included (`high` → error, `medium` → warning, `low`/`info` → note). Azure resources are not files, so the resource ID is the alert's path; a fingerprint of rule + resource ID keeps alerts stable, so cleaning up a resource closes its alert |
 
 Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`sarif_file: reports/report.sarif`, `category: azure-waste-finder`) to see findings under Security → Code scanning.

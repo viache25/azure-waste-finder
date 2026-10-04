@@ -21,6 +21,7 @@ pre-commit install                      # optional: ruff + terraform fmt on comm
 pip install pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit -r /tmp/req.txt --no-deps --disable-pip   # what the CI audit job runs
 python -m waste_finder --demo           # offline demo run -> reports/report.md + report.html
 python -m waste_finder --subscription <id>   # real run, needs `az login` (Reader is enough)
+python -m waste_finder --demo --cost-source actual   # actual costs from the demo Cost Management answers
 python -m waste_finder --all-subscriptions --rules stopped_vm --exclude '*/resourceGroups/rg-x/*' --min-savings 5
 python -m waste_finder --demo --format md,html,json,csv,sarif --fail-over 100 --summary summary.md   # exit code 3
 
@@ -48,28 +49,36 @@ scripts/stop-vm.(ps1|sh)  `az vm stop` WITHOUT deallocate (Terraform can't leave
 src/waste_finder/
   registry.py             REGISTRY (rule id -> Rule: titles DE/EN, severity, KQL file, pricing strategy name,
                           why/action text, az command template, docs link); the single source of truth for rules
-  models.py               Finding dataclass (severity, age_days, quantity, monthly_cost_eur, monthly_savings_eur;
-                          is_free = priced at exactly 0), HOURS_PER_MONTH = 730
+  models.py               Finding dataclass (severity, age_days, quantity, monthly_cost_eur, monthly_savings_eur,
+                          cost_source retail|actual; is_free = priced at exactly 0), HOURS_PER_MONTH = 730
   queries/*.kql           one Resource Graph query per rule
   rules.py                load_query(rule) via the registry, find_waste(run_query, rules, min_age_days) -> list[Finding];
                           Scope (subscriptions | management group | all readable) + resource_graph_runner(scope)
   config.py               Settings from waste-finder.toml (tomllib) overridden by CLI flags; ignore tag
                           `waste-finder:ignore=true` + exclude globs on the resource ID; min_monthly_savings threshold;
-                          formats, fail_over, snapshot_min_age_days, downgrade_lookback_days (-> Settings.min_age_days);
+                          formats, fail_over, cost_source, snapshot_min_age_days, downgrade_lookback_days
+                          (-> Settings.min_age_days);
                           split_ignored / split_free / split_below_threshold
   pricing.py              STRATEGIES (strategy name -> pricing fn returning Price(cost, note, savings=None)),
-                          Retail Prices API fetcher with 24 h JSON cache
+                          Retail Prices API fetcher with 24 h JSON cache; PARTIAL_SAVINGS_STRATEGIES
+  costs.py                --cost-source actual: Cost Management Query API (AmortizedCost, last 30 full days,
+                          grouped by ResourceId, one POST per subscription with findings, nextLink paging,
+                          429 retry); collect_actual_costs (failed subscription -> warning, retail stays),
+                          apply_actual_costs (per-finding fallback to retail)
   report.py, templates/   Jinja2 Markdown + HTML report, German; section "Aufräumen (kostenlos)" for free findings
   export.py               FORMATS; JSON (schema_version, docs/report.schema.json), CSV, SARIF 2.1.0 exporters;
                           render_summary (German Markdown for --summary / $GITHUB_STEP_SUMMARY)
   cli.py                  argparse entry point (`python -m waste_finder`, console script `waste-finder`);
                           exit codes 0 ok, 2 usage/config error, 3 monthly waste above --fail-over
-  demo.py, demo/*.json    fake subscription + price list for --demo and tests
+  demo.py, demo/*.json    fake subscriptions, price list and Cost Management answers (cost_management.json,
+                          keyed by subscription) for --demo and tests
 docs/report.schema.json   JSON Schema of report.json; tests validate the demo JSON against it (jsonschema, dev extra)
 tests/                    pytest, no network (test_fetchers.py fakes requests and the Resource Graph SDK)
+  fixtures/cost_management/  Cost Management Query API responses in the documented format (paging, PreTaxCost/USD,
+                          403, 429) for test_costs.py
 ```
 
-Flow: Resource Graph (scope) → `Finding`s of the selected rules (age-based rows below their minimum age dropped) → drop ignored/excluded → pricing → split off free clean-up findings (cost 0) → drop below threshold → report in the selected formats (md/html grouped by subscription plus the clean-up section, counts of ignored and below-threshold findings; json/csv/sarif from `export.py`, exporters take `(findings, summary, run, cleanup)`) → optional summary → exit code 3 if the total is above `fail_over`. The query runner (`Callable[[str], list[dict]]`) and the price fetcher (`Callable[[str], list[dict]]`, takes an OData filter) are injected, which is how tests and `--demo` run without Azure. `demo_runner` maps a KQL text back to its rule, so every rule needs an entry in `demo/resource_graph.json`; `demo_fetcher` evaluates only simple `field eq 'value' and ...` filters, so pricing filters must stay in that shape (or the demo fetcher must learn the new shape).
+Flow: Resource Graph (scope) → `Finding`s of the selected rules (age-based rows below their minimum age dropped) → drop ignored/excluded → pricing (retail) → with `--cost-source actual`: Cost Management per subscription with findings replaces the retail amounts where it has a row → split off free clean-up findings (cost 0) → drop below threshold → report in the selected formats (md/html grouped by subscription plus the clean-up section, counts of ignored and below-threshold findings; json/csv/sarif from `export.py`, exporters take `(findings, summary, run, cleanup)`) → optional summary → exit code 3 if the total is above `fail_over`. The query runner (`Callable[[str], list[dict]]`) and the price fetcher (`Callable[[str], list[dict]]`, takes an OData filter) are injected, which is how tests and `--demo` run without Azure. `demo_runner` maps a KQL text back to its rule, so every rule needs an entry in `demo/resource_graph.json`; `demo_fetcher` evaluates only simple `field eq 'value' and ...` filters, so pricing filters must stay in that shape (or the demo fetcher must learn the new shape).
 
 Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now, `monthly_savings_eur` is set only when acting saves less than the full cost (e.g. a downgrade). `Finding.savings_eur` falls back to the cost; the report total, the sort order and the CLI output use `savings_eur`. A pricing strategy sets savings through `Price.savings` (only `disk_downgrade` does: current tier minus the Standard HDD tier of the same size, never below 0); the md/html tables show "Kosten" and "Einsparung" columns, and `Summary.monthly_cost_eur` (md/html only, not in JSON) is mentioned when it differs from the total. If the reference price is missing the finding is unpriced rather than showing the full cost as savings.
 
@@ -91,12 +100,13 @@ The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titl
 - **Cost discipline.** New Terraform waste resources are opt-in, smallest SKU, README states their approximate €/hour. Nothing that creates Azure resources runs on a schedule.
 - **Prices** are list prices (Retail API, `currencyCode='EUR'` unless `currency` is configured; the `*_eur` field names stay and then hold the configured currency; one price cache file per currency), monthly = hourly × 730. Disks are priced by the smallest tier that fits (32 GB Standard HDD → `S4 LRS`, Standard HDD starts at S4), using exactly the `<tier> Disk` meter of a `... Managed Disks` product: SSD tiers also have a `<tier> Disk Mount` meter (per mount of a shared disk) that must not be picked.
 - **Settings precedence**: defaults < `waste-finder.toml` < CLI flags; a flag replaces a list from the file. New settings go into `config.Settings`, `load_config` (unknown keys are rejected) and a CLI flag; tests in `tests/test_config.py`.
-- **JSON output** is a contract (later runs read it for trends): changing a field means bumping `export.SCHEMA_VERSION` (minor = new optional field, major = rename/removal) and updating `docs/report.schema.json`; the schema has `additionalProperties: false`, so the tests catch drift.
+- **JSON output** is a contract (later runs read it for trends; currently schema 1.4, which added `cost_source`, `cost_period` and `summary.actual_costs`): changing a field means bumping `export.SCHEMA_VERSION` (minor = new optional field, major = rename/removal) and updating `docs/report.schema.json`; the schema has `additionalProperties: false`, so the tests catch drift.
 - **Subscription grouping** uses `Finding.subscription_id`, parsed from the resource ID; demo data has two subscriptions and one resource tagged `waste-finder:ignore=true`.
 - **Age-based rules** (`old_snapshot`, `premium_disk_deallocated_vm`): the KQL projects `ageDays`, computed by Resource Graph with `now()`, so demo rows carry a fixed `ageDays` and stay stable over time. `find_waste` drops rows younger than `Settings.min_age_days[rule]` before they become findings (they are not counted as ignored). `Finding.age_days` shows up in the report (label `Rule.age_label_de`) and in JSON/CSV (`age_days`, schema 1.1). Deallocation time comes from the disk's `properties.LastOwnershipUpdateTime` (capital L; last attach/detach or VM deallocate/start) with `diskState == 'Reserved'` (attached to a deallocated VM).
 - **Snapshots** are priced per GB-month of the snapshot meter (`Snapshots LRS|ZRS` of the Standard HDD or Premium SSD product) × provisioned size: an upper bound, Azure bills the used size and Resource Graph does not expose it.
 - **App Service plans** are priced from one Retail API call per region (`serviceName eq 'Azure App Service'`), matched in Python: hourly unit, product ends with ` - Linux` for Linux plans, `skuName` without spaces = ARM `sku.name` (`P1 v3` vs `P1v3`); × 730 × instances (`quantity`, from `sku.capacity`). Elastic Premium / Workflow Standard plans have no such meter and stay unpriced.
 - **Idle network** (verified against the Retail API): NAT gateways bill the hourly `<sku> Gateway` meter even without subnets or traffic (no hourly meter for StandardV2: unpriced). Standard load balancers bill only for rules (`Standard Included LB Rules and Outbound Rules` for the first 5, `... Overage ...` per further rule; the `... - Free` meters are not used); no rules = no hourly charge. Both price lists are global (`armRegionName` 'Global'), so pricing prefers the exact region, then 'Global'. The LB query counts backend members with `mv-expand` (Resource Graph has no `mv-apply`) and projects the rule count as `quantity`.
+- **Actual costs** (`--cost-source actual`, `costs.py`): the 30-day amortized sum is the monthly amount (not scaled to 730 h). Cost Management returns lower-case resource IDs, so matching is on `resource_id.lower()`. A finding keeps its retail price when there is no row, the row's currency differs from the report currency (counted, CLI note) or its subscription's query failed (CLI warning); `Finding.cost_source` is `"retail"` / `"actual"` / `None` (unpriced) and drives the report column "Quelle" (shown only for actual runs; the retail report is unchanged). Strategies in `pricing.PARTIAL_SAVINGS_STRATEGIES` (downgrades) keep the retail savings/cost ratio and stay unpriced without a retail result. After applying, severity is recomputed (`info` when savings are 0, else the rule severity). The query needs Cost Management Reader (or Reader). Fixtures follow the documented response format; they were not recorded against a live subscription.
 - **Free findings**: `price_findings` sets `severity = "info"` for every finding priced at exactly 0 (e.g. a load balancer without rules); unpriced (`None`) findings keep their severity.
 - **Free clean-up findings** (`orphaned_nic`, `unattached_nsg`, `empty_resource_group`, pricing `free`, and any other finding priced at 0 such as a load balancer without rules): `config.split_free` takes them out after pricing, so they are not in the total, not in `summary.count` and not subject to `min_monthly_savings`. They are shown in "Aufräumen (kostenlos)" (md/html, with their own commands), counted in `Summary.cleanup`, exported as JSON `cleanup` (schema 1.3), appended to CSV and SARIF (level `note`). The "Warum kostet das Geld?" list skips pricing-`free` rules; the clean-up section explains the rules it lists.
 - **Empty resource groups** come from `ResourceContainers` with a `join kind=leftouter` on a per-group resource count (Resource Graph supports no anti-join); groups with `managedBy` set are skipped.

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from waste_finder.registry import Severity
 
 HOURS_PER_MONTH = 730  # Azure's own convention for monthly estimates
+
+# Where a finding's amounts come from: list price (Retail Prices API) or actual cost (Cost Management).
+CostSource = Literal["retail", "actual"]
 
 
 @dataclass
@@ -27,6 +31,7 @@ class Finding:
     monthly_cost_eur: float | None = None  # what the resource costs now; None = price not found
     monthly_savings_eur: float | None = None  # what acting saves, if less than the full cost (e.g. a downgrade)
     price_note: str = ""
+    cost_source: CostSource | None = None  # None while unpriced
 
     @property
     def subscription_id(self) -> str:

@@ -42,6 +42,7 @@
     <div class="big">{{ summary.monthly_eur | eur }} pro Monat</div>
     ≈ {{ summary.yearly_eur | eur }} pro Jahr durch {{ summary.count }} ungenutzte Ressourcen.
     {% if summary.monthly_cost_eur != summary.monthly_eur %}<br>Die Ressourcen kosten zusammen ca. {{ summary.monthly_cost_eur | eur }} pro Monat; eingespart wird weniger, weil verkleinerte Ressourcen weiter etwas kosten (Spalten „Kosten“ und „Einsparung“).{% endif %}
+    {% if actual %}<br>Kostenquelle: {{ summary.actual }} von {{ summary.count }} Beträgen sind Ist-Kosten aus Azure Cost Management (amortisiert, {{ cost_period }}), die übrigen Listenpreise (Spalte „Quelle“).{% endif %}
     {% if summary.unpriced %}<br>{{ summary.unpriced }} Ressource(n) ohne Preis, nicht in der Summe enthalten.{% endif %}
     {% if summary.ignored %}<br>{{ summary.ignored }} Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).{% endif %}
     {% if summary.below_threshold %}<br>{{ summary.below_threshold }} Ressource(n) unter der Schwelle von {{ min_savings | eur }} pro Monat nicht aufgeführt.{% endif %}
@@ -53,7 +54,7 @@
   <p>Ca. <strong>{{ group.monthly_eur | eur }} pro Monat</strong> durch {{ group.findings | length }} Ressource(n).</p>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten {{ currency_symbol }}/Monat</th><th class="num">Einsparung {{ currency_symbol }}/Monat</th><th>Empfehlung</th></tr></thead>
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten {{ currency_symbol }}/Monat</th><th class="num">Einsparung {{ currency_symbol }}/Monat</th>{% if actual %}<th>Quelle</th>{% endif %}<th>Empfehlung</th></tr></thead>
     <tbody>
     {% for f in group.findings %}
       <tr>
@@ -64,6 +65,7 @@
         <td>{{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %}{% if f.age_days is not none %}, {{ f.age_days }} {{ rules[f.rule].age_label_de }}{% endif %}{% if f.quantity is not none and rules[f.rule].quantity_unit_de %}, {{ f.quantity }} {{ rules[f.rule].quantity_unit_de }}{% endif %}</td>
         <td class="num">{{ f.monthly_cost_eur | eur }}</td>
         <td class="num">{{ f.savings_eur | eur }}</td>
+        {% if actual %}<td>{{ source_labels[f.cost_source] }}</td>{% endif %}
         <td>{{ rules[f.rule].action_de }}<br><code class="cmd">{{ rules[f.rule].remediation_command(f.resource_id) }}</code></td>
       </tr>
     {% endfor %}
@@ -107,7 +109,7 @@
   {% endfor %}
   </ul>
 
-  <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in {{ currency }}, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
+  <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>{% if actual %}Kosten: Ist-Kosten aus Azure Cost Management, wo vorhanden (amortisierte Kosten {{ cost_period }} je Ressource, die Summe der 30 Tage gilt als Monatswert); sonst Listenpreise der Azure Retail Prices API (in {{ currency }}, 730 h/Monat), die durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen können.{% else %}Preise: Azure Retail Prices API (Listenpreise in {{ currency }}, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.{% endif %}</footer>
 </main>
 </body>
 </html>

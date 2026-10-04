@@ -5,11 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from functools import partial
+from typing import TYPE_CHECKING
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from waste_finder.models import Finding
 from waste_finder.registry import REGISTRY, SEVERITIES
+
+if TYPE_CHECKING:
+    from waste_finder.costs import CostPeriod
+
+# Report label for Finding.cost_source (column "Quelle" when actual costs were requested).
+COST_SOURCE_LABELS = {"actual": "Ist-Kosten", "retail": "Listenpreis", None: "ohne Preis"}
 
 
 @dataclass
@@ -22,6 +29,7 @@ class Summary:
     ignored: int = 0  # tagged waste-finder:ignore=true or matched an exclude pattern
     below_threshold: int = 0  # saves less than min_monthly_savings
     cleanup: int = 0  # free clean-up findings, listed separately and not part of the total
+    actual: int = 0  # findings priced from Cost Management (--cost-source actual); the rest are list prices
 
 
 @dataclass
@@ -44,6 +52,7 @@ def summarize(findings: list[Finding], ignored: int = 0, below_threshold: int = 
         ignored=ignored,
         below_threshold=below_threshold,
         cleanup=cleanup,
+        actual=sum(1 for f in findings if f.cost_source == "actual"),
     )
 
 
@@ -83,6 +92,8 @@ def render(
     min_savings: float = 0.0,
     currency: str = "EUR",
     cleanup: list[Finding] | None = None,
+    cost_source: str = "retail",
+    cost_period: CostPeriod | None = None,
 ) -> str:
     env = Environment(
         loader=PackageLoader("waste_finder", "templates"),
@@ -106,4 +117,7 @@ def render(
         currency_symbol=currency_symbol(currency),
         today=date.today().isoformat(),
         demo=demo,
+        actual=cost_source == "actual",
+        cost_period=cost_period.label() if cost_period else "",
+        source_labels=COST_SOURCE_LABELS,
     )

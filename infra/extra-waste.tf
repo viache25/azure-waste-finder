@@ -7,8 +7,8 @@ resource "azurerm_snapshot" "old" {
   count = var.enable_extra_waste ? 1 : 0
 
   name                = "${var.prefix}-old-snapshot"
-  resource_group_name = azurerm_resource_group.demo.name
-  location            = azurerm_resource_group.demo.location
+  resource_group_name = local.resource_group_name
+  location            = local.location
   create_option       = "Copy"
   source_uri          = azurerm_managed_disk.orphaned.id
   incremental_enabled = true
@@ -28,8 +28,8 @@ resource "azurerm_service_plan" "empty" {
   count = var.enable_extra_waste ? 1 : 0
 
   name                = "${var.prefix}-empty-plan"
-  resource_group_name = azurerm_resource_group.demo.name
-  location            = azurerm_resource_group.demo.location
+  resource_group_name = local.resource_group_name
+  location            = local.location
   os_type             = "Linux"
   sku_name            = "B1"
   worker_count        = 1
@@ -43,8 +43,8 @@ resource "azurerm_lb" "idle" {
   count = var.enable_extra_waste ? 1 : 0
 
   name                = "${var.prefix}-idle-lb"
-  resource_group_name = azurerm_resource_group.demo.name
-  location            = azurerm_resource_group.demo.location
+  resource_group_name = local.resource_group_name
+  location            = local.location
   sku                 = "Standard"
   tags                = local.tags
 
@@ -69,8 +69,8 @@ resource "azurerm_network_interface" "orphaned" {
   count = var.enable_extra_waste ? 1 : 0
 
   name                = "${var.prefix}-orphaned-nic"
-  resource_group_name = azurerm_resource_group.demo.name
-  location            = azurerm_resource_group.demo.location
+  resource_group_name = local.resource_group_name
+  location            = local.location
   tags                = local.tags
 
   ip_configuration {
@@ -85,8 +85,8 @@ resource "azurerm_network_security_group" "unattached" {
   count = var.enable_extra_waste ? 1 : 0
 
   name                = "${var.prefix}-unattached-nsg"
-  resource_group_name = azurerm_resource_group.demo.name
-  location            = azurerm_resource_group.demo.location
+  resource_group_name = local.resource_group_name
+  location            = local.location
   tags                = local.tags
 }
 

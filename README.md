@@ -65,6 +65,7 @@ infra/                    Terraform: resource group, 5 € budget alert, 3 waste
                           credentials, read-only roles), applied once by the owner
 scripts/stop-vm.(ps1|sh)  stops the demo VM WITHOUT deallocating it
 scripts/finops_issue.py   opens, updates or closes the "Azure waste report" issue (finops-check.yml)
+scripts/e2e_assert.py     checks a live report against what Terraform deployed (e2e.yml)
 src/waste_finder/
   registry.py             one entry per rule: titles, severity, KQL file, pricing strategy, remediation
   queries/*.kql           one Resource Graph query per rule
@@ -78,7 +79,7 @@ src/waste_finder/
   cli.py                  python -m waste_finder
   demo/                   fictional subscriptions, sample prices, Cost Management answers and an earlier
                           report.json (so the demo report shows a trend) for --demo and tests
-tests/                    pytest (358 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (382 tests), runs fully offline, coverage floor 95 %
   fixtures/               recorded-format API responses (Cost Management)
 docs/report.schema.json   JSON Schema of report.json
 ```
@@ -172,7 +173,7 @@ The demo environment uses the smallest SKUs (B1s VM, 32 GB Standard HDD, one Sta
 
 Snapshots are only reported once they are 30 days old; right after `apply`, run the finder with `--snapshot-min-age 0` to see it.
 
-If `terraform apply` says the VM size is not available, set `location` or `vm_size` in `terraform.tfvars`. If your subscription type does not support budgets, set `enable_budget = false`.
+If `terraform apply` says the VM size is not available, set `location` or `vm_size` in `terraform.tfvars`. If your subscription type does not support budgets, set `enable_budget = false`. To deploy into an existing resource group instead of creating `<prefix>-waste-demo-rg`, set `resource_group_name` (the group's location then applies); the [live end-to-end test](#live-end-to-end-test) does this.
 
 ## Connect GitHub to Azure
 
@@ -246,6 +247,39 @@ Preview the issue for any report without touching GitHub:
 
 ```bash
 python scripts/finops_issue.py --report reports/report.json --threshold 10 --dry-run
+```
+
+## Live end-to-end test
+
+[`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) proves the whole chain against a real subscription: Terraform creates the waste, the finder finds it, Terraform removes it again. It is **manual only** (`gh workflow run e2e.yml`, or Actions → E2E → Run workflow) and never scheduled, because it creates resources.
+
+1. The run waits for your approval (environment `azure-e2e`, required reviewer).
+2. `terraform apply` of `infra/` into the resource group `awf-e2e-rg` from [Connect GitHub to Azure](#connect-github-to-azure) (`enable_e2e = true`). It uses a unique prefix `e2e-<run id>-<attempt>`, no budget and no extra waste. The identity has Contributor on that group only, so `infra/` deploys into the existing group (`resource_group_name`) instead of creating one.
+3. `scripts/stop-vm.sh` stops the VM without deallocating it.
+4. `waste-finder --subscription $AZURE_SUBSCRIPTION_ID --format json` runs with all rules. Then [`scripts/e2e_assert.py`](scripts/e2e_assert.py) checks that the unattached disk, the stopped VM and the orphaned public IP are each reported for exactly the resource Terraform created, in that group, with a monthly cost above 0. Resource Graph shows new resources and power states with a delay, so the step retries up to 10 times, once a minute.
+5. `terraform destroy` **always** runs, also after a failed assertion, a failed apply or a cancel. The report and the expected names are uploaded as artifact `e2e-report`.
+
+**Expected cost per run** (list prices West Europe, Retail Prices API, October 2026; a run takes about 15 to 25 minutes):
+
+| Resource | Price |
+|---|---|
+| VM `Standard_B1s` (Linux, stopped but still allocated) | 0.0106 €/h |
+| 2 × 32 GB Standard HDD (S4): the orphaned disk and the VM's OS disk | 2 × 1.35 € per month ≈ 0.0037 €/h |
+| Standard static public IP | 0.0044 €/h |
+| Virtual network, subnet, NIC | free |
+| **Total** | **≈ 0.019 €/h: about 0.01 € per run, at most 0.02 € even if every meter is rounded up to a full hour** |
+
+Prerequisites:
+- [Connect GitHub to Azure](#connect-github-to-azure) applied with `enable_e2e = true`.
+- The GitHub environment `azure-e2e` with you as required reviewer.
+- Optionally `AZURE_E2E_RESOURCE_GROUP`, default `awf-e2e-rg`.
+- The resource providers `Microsoft.Compute` and `Microsoft.Network` registered in the subscription. They are after any earlier `terraform apply` of `infra/`; otherwise run `az provider register --namespace Microsoft.Compute` and the same for `Microsoft.Network`. The identity cannot register providers itself.
+
+If the destroy step fails (an Azure API error), the resources stay and cost about 0.45 € per day. Delete the group, then re-apply `infra/github-oidc`, which recreates the group and its role assignment:
+
+```bash
+az group delete --name awf-e2e-rg --yes
+cd infra/github-oidc && terraform apply -var "subscription_id=$(az account show --query id -o tsv)" -var enable_e2e=true
 ```
 
 ## Scope, rules and exclusions
@@ -394,8 +428,8 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 | `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
 | `docker` | builds the image (not pushed), checks that it runs as uid 10001, runs `--version` and the demo in the container with a mounted output directory |
 | `package` | builds sdist + wheel like a release (`python -m build`, `twine check --strict`) and runs `--version` and the demo from the installed wheel outside the source tree |
-| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor (also checks the workflows: Azure jobs skip without `AZURE_CLIENT_ID`, nothing that runs `terraform apply` is scheduled); JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
-| `terraform` | for each Terraform root (`infra`, `infra/github-oidc`): `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked providers; `infra`: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default; `infra/github-oidc`: federated subjects, read-only subscription roles, Contributor only on the opt-in E2E group), `tflint` with the azurerm ruleset |
+| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor (also checks the workflows: Azure jobs skip without `AZURE_CLIENT_ID`, nothing that runs `terraform apply` is scheduled, the E2E destroy step always runs); JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
+| `terraform` | for each Terraform root (`infra`, `infra/github-oidc`): `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked providers; `infra`: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default, deploying into an existing resource group; `infra/github-oidc`: federated subjects, read-only subscription roles, Contributor only on the opt-in E2E group), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
 `.github/workflows/codeql.yml` runs CodeQL for Python on PRs, on `main` and weekly; alerts appear under Security → Code scanning.

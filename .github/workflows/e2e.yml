@@ -1,0 +1,94 @@
+name: E2E
+
+# Manual live end-to-end test (D3): deploys the demo waste from infra/ into the prepared resource group
+# (infra/github-oidc with enable_e2e), stops the VM without deallocating it, runs the finder against the real
+# subscription and asserts that the three base rules find exactly those resources with a cost > 0
+# (scripts/e2e_assert.py). `terraform destroy` always runs at the end, also after a failure or a cancel.
+# About 0.02 € per run (README "Live end-to-end test"). workflow_dispatch ONLY: it creates resources, so it is
+# never scheduled (tests/test_workflows.py enforces this).
+# Environment azure-e2e: required reviewer, and its federated credential is the one that matches this job.
+# Skipped until the repository variable AZURE_CLIENT_ID is set.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    if: vars.AZURE_CLIENT_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: azure-e2e
+    permissions:
+      contents: read
+      id-token: write # OIDC token for azure/login and the azurerm provider (subject environment:azure-e2e)
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # Contributor on one resource group cannot register resource providers (subscription scope).
+      ARM_RESOURCE_PROVIDER_REGISTRATIONS: none
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      # Unique per run and attempt, so a left-over from an earlier run never collides.
+      TF_VAR_prefix: e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      TF_VAR_resource_group_name: ${{ vars.AZURE_E2E_RESOURCE_GROUP || 'awf-e2e-rg' }}
+      TF_VAR_enable_budget: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install .
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false # scripts/stop-vm.sh reads `terraform output -raw`
+      # Azure CLI login for scripts/stop-vm.sh and the finder (DefaultAzureCredential).
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: terraform init
+        id: init
+        working-directory: infra
+        run: terraform init # local state: apply and destroy happen in this job
+      - name: terraform apply
+        working-directory: infra
+        run: terraform apply -auto-approve
+      - name: Stop the VM without deallocating it
+        run: scripts/stop-vm.sh
+      - name: Find the waste
+        timeout-minutes: 20 # leaves time for the destroy step within the job timeout
+        run: |
+          terraform -chdir=infra output -json expected_findings > expected.json
+          cat expected.json
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            waste-finder --subscription "$AZURE_SUBSCRIPTION_ID" --format json --out-dir reports
+            if python scripts/e2e_assert.py --report reports/report.json --expected expected.json \
+              --resource-group "$TF_VAR_resource_group_name"; then
+              exit 0
+            fi
+            echo "Attempt $attempt: not everything is visible yet (Resource Graph lags behind changes), retrying in 60 s"
+            sleep 60
+          done
+          exit 1
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: e2e-report
+          path: |
+            reports/
+            expected.json
+          if-no-files-found: ignore
+      - name: terraform destroy
+        if: always() && steps.init.outcome == 'success'
+        working-directory: infra
+        run: terraform destroy -auto-approve

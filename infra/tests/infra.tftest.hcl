@@ -37,7 +37,7 @@ run "required_tags" {
   assert {
     condition = alltrue([
       for tags in [
-        azurerm_resource_group.demo.tags,
+        azurerm_resource_group.demo[0].tags,
         azurerm_managed_disk.orphaned.tags,
         azurerm_public_ip.orphaned.tags,
         azurerm_virtual_network.demo.tags,
@@ -295,5 +295,82 @@ run "extra_waste_cleanup_findings" {
   assert {
     condition     = output.expected_findings.orphaned_nic == "test-orphaned-nic" && output.expected_findings.unattached_nsg == "test-unattached-nsg" && output.expected_findings.empty_resource_group == "test-empty-rg"
     error_message = "expected_findings must list the clean-up resources when extra waste is enabled."
+  }
+}
+
+run "own_resource_group_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(azurerm_resource_group.demo) == 1 && length(data.azurerm_resource_group.existing) == 0
+    error_message = "Without resource_group_name the demo creates its own resource group."
+  }
+
+  assert {
+    condition     = azurerm_resource_group.demo[0].name == "test-waste-demo-rg" && output.resource_group_name == "test-waste-demo-rg"
+    error_message = "The own resource group is named <prefix>-waste-demo-rg."
+  }
+
+  assert {
+    condition     = azurerm_managed_disk.orphaned.resource_group_name == "test-waste-demo-rg" && azurerm_linux_virtual_machine.stopped.location == "westeurope"
+    error_message = "The waste goes into the own resource group, in var.location."
+  }
+}
+
+# e2e.yml: deploy into the prepared group from infra/github-oidc (enable_e2e), where the identity has Contributor.
+run "existing_resource_group" {
+  command = plan
+
+  variables {
+    prefix              = "e2e-123-1"
+    resource_group_name = "awf-e2e-rg"
+    enable_budget       = false
+  }
+
+  override_data {
+    target = data.azurerm_resource_group.existing[0]
+    values = {
+      id       = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/awf-e2e-rg"
+      location = "northeurope"
+    }
+  }
+
+  assert {
+    condition     = length(azurerm_resource_group.demo) == 0
+    error_message = "With resource_group_name no resource group is created (the E2E identity could not create one)."
+  }
+
+  assert {
+    condition = alltrue([
+      for rg in [
+        azurerm_managed_disk.orphaned.resource_group_name,
+        azurerm_public_ip.orphaned.resource_group_name,
+        azurerm_virtual_network.demo.resource_group_name,
+        azurerm_subnet.demo.resource_group_name,
+        azurerm_network_interface.vm.resource_group_name,
+        azurerm_linux_virtual_machine.stopped.resource_group_name,
+      ] : rg == "awf-e2e-rg"
+    ])
+    error_message = "Every waste resource must go into the existing resource group."
+  }
+
+  assert {
+    condition     = azurerm_managed_disk.orphaned.location == "northeurope" && azurerm_linux_virtual_machine.stopped.location == "northeurope"
+    error_message = "Resources take the location of the existing group."
+  }
+
+  assert {
+    condition     = output.resource_group_name == "awf-e2e-rg" && output.expected_findings.stopped_vm == "e2e-123-1-stopped-vm"
+    error_message = "Outputs must name the existing group and the prefixed resources."
+  }
+
+  assert {
+    condition     = output.expected_findings.unattached_disk == "e2e-123-1-orphaned-disk" && output.expected_findings.orphaned_ip == "e2e-123-1-orphaned-pip"
+    error_message = "The unique prefix must reach the names of the three base waste resources."
+  }
+
+  assert {
+    condition     = length(azurerm_consumption_budget_resource_group.safety) == 0
+    error_message = "The E2E run creates no budget."
   }
 }

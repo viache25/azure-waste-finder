@@ -10,6 +10,12 @@ variable "prefix" {
   default     = "awf"
 }
 
+variable "resource_group_name" {
+  description = "Deploy into this existing resource group instead of creating <prefix>-waste-demo-rg (its location then wins over var.location). e2e.yml uses the group from infra/github-oidc."
+  type        = string
+  default     = null
+}
+
 variable "location" {
   description = "Azure region. Change it if the VM size is not available there."
   type        = string

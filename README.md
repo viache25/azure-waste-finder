@@ -64,6 +64,7 @@ infra/                    Terraform: resource group, 5 € budget alert, 3 waste
   github-oidc/            Terraform: OIDC identity for GitHub Actions (app registration, federated
                           credentials, read-only roles), applied once by the owner
 scripts/stop-vm.(ps1|sh)  stops the demo VM WITHOUT deallocating it
+scripts/finops_issue.py   opens, updates or closes the "Azure waste report" issue (finops-check.yml)
 src/waste_finder/
   registry.py             one entry per rule: titles, severity, KQL file, pricing strategy, remediation
   queries/*.kql           one Resource Graph query per rule
@@ -77,7 +78,7 @@ src/waste_finder/
   cli.py                  python -m waste_finder
   demo/                   fictional subscriptions, sample prices, Cost Management answers and an earlier
                           report.json (so the demo report shows a trend) for --demo and tests
-tests/                    pytest (302 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (358 tests), runs fully offline, coverage floor 95 %
   fixtures/               recorded-format API responses (Cost Management)
 docs/report.schema.json   JSON Schema of report.json
 ```
@@ -219,6 +220,34 @@ echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}]}" |
 
 Other settings: `-var github_repository=owner/name` for a fork, `-var github_branch=...` / `-var github_environment=...` for other subjects (if you customized the repository's OIDC subject claim template, the subjects must match it). The local Terraform state holds only IDs (no secret); `terraform destroy` in `infra/github-oidc` removes the identity, its role assignments and the E2E group. `terraform test` checks the subjects, issuer and audience, that the subscription roles are exactly Reader + Cost Management Reader, and that Contributor exists only with `enable_e2e` and only on the E2E group.
 
+## Scheduled FinOps check
+
+[`.github/workflows/finops-check.yml`](.github/workflows/finops-check.yml) scans the subscription **every Monday at 06:17 UTC** and on demand (`gh workflow run finops-check.yml`, or Actions → FinOps check → Run workflow). It only reads, so it may run on a schedule.
+
+1. `azure/login` with OIDC as the read-only identity from [Connect GitHub to Azure](#connect-github-to-azure).
+2. Downloads the `report.json` of the previous run (artifact `finops-report` of the newest run on `main`) and passes it as `--previous`, so the report shows the change since last week. The first run, or a run after the artifact expired (90 days), has no trend.
+3. Runs `waste-finder --subscription $AZURE_SUBSCRIPTION_ID --format md,html,json --summary $GITHUB_STEP_SUMMARY`: the summary appears on the run page, and the report is uploaded as artifact `finops-report`.
+4. [`scripts/finops_issue.py`](scripts/finops_issue.py) keeps **one** issue titled **"Azure waste report"**. It finds the issue by title plus a hidden marker, so an issue you open with the same title is left alone.
+
+| Monthly waste of the run | Issue |
+|---|---|
+| above the threshold | opened, or updated when already open: total, change since the last run, the 10 largest findings, link to the run |
+| above zero but at or below the threshold | an open issue is updated, no new one is opened |
+| zero (no findings left apart from free clean-up) | closed with a comment |
+
+| Repository variable (optional) | Default | Meaning |
+|---|---|---|
+| `FINOPS_ISSUE_THRESHOLD` | `10` | Monthly amount (report currency) above which the issue is opened; the manual run has a `threshold` input that overrides it |
+| `FINOPS_COST_SOURCE` | `retail` | `actual` uses Cost Management amounts (the identity has Cost Management Reader) |
+
+Rules, exclusions, currency and the savings threshold come from a `waste-finder.toml` in the repository root, if you commit one (see [Scope, rules and exclusions](#scope-rules-and-exclusions)). Until `AZURE_CLIENT_ID` is set, the job is skipped and the run is green. GitHub disables scheduled workflows after 60 days without activity in the repository; re-enable the workflow in the Actions tab.
+
+Preview the issue for any report without touching GitHub:
+
+```bash
+python scripts/finops_issue.py --report reports/report.json --threshold 10 --dry-run
+```
+
 ## Scope, rules and exclusions
 
 ```bash
@@ -327,12 +356,12 @@ Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`s
 | `2` | Usage or config error (unknown rule, format or currency, bad config file, no subscription given, unreadable `--previous` report or one in another currency) |
 | `3` | Monthly waste is above `--fail-over` / `fail_over` (strictly greater); all reports were written |
 
-`--summary` appends a few lines (total, threshold verdict, one row per rule, counts of unpriced, ignored, below-threshold and free clean-up findings) to a file. In GitHub Actions, `--summary "$GITHUB_STEP_SUMMARY"` puts them on the run's summary page; CI does this for the demo run.
+`--summary` appends a few lines (total, threshold verdict, one row per rule, counts of unpriced, ignored, below-threshold and free clean-up findings) to a file. In GitHub Actions, `--summary "$GITHUB_STEP_SUMMARY"` puts them on the run's summary page; CI does this for the demo run, the [scheduled FinOps check](#scheduled-finops-check) for the real subscription.
 
 ## Security
 
 - Authentication uses `DefaultAzureCredential`, i.e. your local `az login`. No keys or secrets in the code or the repo.
-- GitHub Actions log in to Azure with OIDC federated credentials (`infra/github-oidc/`): no client secret exists, only workflow runs on `main` and jobs in the `azure-e2e` environment are trusted, and the identity can only read the subscription (plus, opt-in, Contributor on the E2E resource group).
+- GitHub Actions log in to Azure with OIDC federated credentials (`infra/github-oidc/`): no client secret exists, only workflow runs on `main` and jobs in the `azure-e2e` environment are trusted, and the identity can only read the subscription (plus, opt-in, Contributor on the E2E resource group). The scheduled check's `GITHUB_TOKEN` may only read the code and artifacts and write issues.
 - `*.tfstate` and `*.tfvars` are git-ignored: state contains resource IDs and the generated SSH key.
 - The demo VM has no public IP and password login is disabled; the orphaned disk denies public network access. `terraform test` checks all of this in CI.
 - The container image runs as a non-root user, and Trivy scans every image pushed to GHCR (report-only, Security tab).
@@ -360,11 +389,12 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 
 | Job | What it checks |
 |---|---|
-| `lint` | `ruff check`, `ruff format --check`, `mypy` (strict) |
+| `lint` | `ruff check`, `ruff format --check`, `mypy` (strict, `src/` and `scripts/`) |
+| `actionlint` | lints the workflow files (expressions, contexts, permissions) and their shell steps (shellcheck) |
 | `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
 | `docker` | builds the image (not pushed), checks that it runs as uid 10001, runs `--version` and the demo in the container with a mounted output directory |
 | `package` | builds sdist + wheel like a release (`python -m build`, `twine check --strict`) and runs `--version` and the demo from the installed wheel outside the source tree |
-| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
+| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor (also checks the workflows: Azure jobs skip without `AZURE_CLIENT_ID`, nothing that runs `terraform apply` is scheduled); JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
 | `terraform` | for each Terraform root (`infra`, `infra/github-oidc`): `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked providers; `infra`: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default; `infra/github-oidc`: federated subjects, read-only subscription roles, Contributor only on the opt-in E2E group), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 

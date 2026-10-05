@@ -21,6 +21,17 @@ jobs:
       - run: ruff format --check .
       - run: mypy
 
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Lints .github/workflows/*.yml: syntax, expressions, contexts (vars, inputs, steps), permissions, and the
+      # shell of every run step with shellcheck. SC2086 (info) is ignored: existing steps expand fixed values
+      # (image name, an optional flag) unquoted on purpose.
+      - uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color -ignore SC2086:info
+
   audit:
     runs-on: ubuntu-latest
     steps:

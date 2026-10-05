@@ -20,6 +20,10 @@ mypy                                    # strict on src/ and scripts/
 pre-commit install                      # optional: ruff + terraform fmt on commit
 pip install pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit -r /tmp/req.txt --no-deps --disable-pip   # what the CI audit job runs
 python -m waste_finder --demo           # offline demo run -> reports/report.md + report.html
+cp reports/report.md docs/sample-report.md && cp reports/report.html docs/sample-report.html   # after demo output changes
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --user-data-dir=/tmp/chrome-shot --hide-scrollbars \
+  --blink-settings=preferredColorScheme=1 --force-device-scale-factor=2 --window-size=1100,900 \
+  --screenshot=docs/sample-report.png "file://$PWD/docs/sample-report.html"   # README screenshot (macOS; may not exit, Ctrl-C after the file exists)
 waste-finder --version                  # version from the git tag (setuptools-scm); reinstall after tagging
 pip install build twine && python -m build && twine check dist/*   # sdist + wheel like release.yml
 docker build --build-arg VERSION=0.0.0+local -t azure-waste-finder .  # needs Docker; CI job `docker` does this
@@ -115,7 +119,10 @@ src/waste_finder/
                           grouped by ResourceId, one POST per subscription with findings, nextLink paging,
                           429 retry); collect_actual_costs (failed subscription -> warning, retail stays),
                           apply_actual_costs (per-finding fallback to retail)
-  report.py, templates/   Jinja2 Markdown + HTML report, German; section "Aufräumen (kostenlos)" for free findings
+  report.py, templates/   Jinja2 Markdown + HTML report, German; section "Aufräumen (kostenlos)" for free findings;
+                          HTML only: rule_chart (savings per rule -> ChartBar, largest = CHART_MAX_PERCENT 75 %, skipped
+                          below two rules) drawn as inline SVG, severity_counts + SEVERITY_RANK (badges, data-sort),
+                          tables class="sortable" + one inline vanilla-JS sorter, print CSS, dark mode
   export.py               FORMATS; JSON (schema_version, docs/report.schema.json), CSV, SARIF 2.1.0 exporters;
                           render_summary (German Markdown for --summary / $GITHUB_STEP_SUMMARY)
   cli.py                  argparse entry point (`python -m waste_finder`, console script `waste-finder`);
@@ -175,6 +182,7 @@ The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titl
 - **Checkov and opt-in resources**: resources behind `count = var.enable_extra_waste ? 1 : 0` are not evaluated with the default variables, so CI does not scan them. Check them locally with a tfvars file that sets `enable_extra_waste = true` (`checkov -d infra --var-file <file>`) before adding inline skips.
 - **"Stopped" ≠ "deallocated"**: the VM rule matches `PowerState/stopped` only; deallocated VMs don't bill compute.
 - **Lint/types**: code passes `ruff` and `mypy --strict` (config in `pyproject.toml`) without blanket ignores; Resource Graph rows are `rules.Row`, price items `pricing.PriceItem`, pricing functions `pricing.PricingStrategy` returning `pricing.Price` (rows and items are `dict[str, Any]`).
+- **HTML report** (`templates/report.html.j2`, `tests/test_report_html.py`): one self-contained file (Pages, e-mail): no `<link>`, no `src=`, no `url(`/`@import`, no CDN or framework; the only script is the inline sorter, and the report must read well without it (rows come sorted by savings, the server-side `aria-sort="descending"` on "Einsparung" says so). Sort keys: `data-sort` on a cell wins (severity rank), else `th.num` columns parse the German amount (`1.234,50 €`; `n/a`/`–` sort lowest), else text with `localeCompare(…, "de")`; `th.nosort` (Empfehlung) gets no button. Every color is a CSS variable with a light, a dark (`prefers-color-scheme`) and a print value; the print block comes last so paper is light even in dark mode. The chart is an SVG without viewBox (user units = CSS px, so text does not shrink on phones), bars as `%` widths with the value label at `x="<pct>%" dx="8"`; a 4 px square rect makes the baseline end square. Existing tests match exact HTML snippets (`<th>Quelle</th>`, `<td class="num">48,43 €</td>`, `<h2 id="aufraeumen">`), so keep those cells attribute-free. The Markdown report has none of this. Headless Chrome is the only way here to look at it (screenshots, `--dump-dom`, `--print-to-pdf`); its window is at least 500 px wide.
 - **Language**: report text German; code, CLI help, README, docs, commits in English.
 - `*.tfvars` (except `example.tfvars`) and `*.tfstate` are git-ignored: state holds the generated SSH key.
 - **scripts/*.py** are imported by tests as top-level modules (`pythonpath = ["scripts"]` for pytest, `src = ["src", "scripts"]` for ruff's isort, `files = ["src", "scripts"]` for mypy); they are not in the wheel and not in the coverage measurement (`source = ["waste_finder"]`), so keep their tests thorough. `release.yml` runs the full suite with `src/` removed, which still works because `scripts/` stays.

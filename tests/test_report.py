@@ -20,8 +20,10 @@ def test_summary_skips_unpriced():
 
 
 def test_html_escapes_resource_names():
-    f = Finding("stopped_vm", "a", "<script>", "rg", "we", "x", monthly_cost_eur=1.0)
-    assert "<script>" not in render([f], "sub", "html")
+    f = Finding("stopped_vm", "a", "<script>alert(1)</script>", "rg", "we", "x", monthly_cost_eur=1.0)
+    html = render([f], "sub", "html")
+    assert "<script>alert(1)" not in html and "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert html.count("<script>") == 1  # only the report's own table sorting
 
 
 def test_demo_run_writes_both_reports(tmp_path, capsys):

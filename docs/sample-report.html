@@ -3,11 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Azure Kostencheck</title>
 <style>
-  :root { --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea; --accent:#0a66c2; --bad:#b42318; --ok:#1a7f37; --bg:#fff; --card:#f6f8fa; }
+  /* Self-contained: no web fonts, no CDN, no external files. Light, dark (prefers-color-scheme) and print. */
+  :root {
+    color-scheme: light dark;
+    --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea; --accent:#0a66c2; --bad:#b42318; --ok:#1a7f37; --bg:#fff; --card:#f6f8fa;
+    --sev-high-fg:#a4161a; --sev-high-bg:#fde8e7; --sev-medium-fg:#8a4b00; --sev-medium-bg:#fff1d6;
+    --sev-low-fg:#0a4f96; --sev-low-bg:#e5f0fb; --sev-info-fg:#57606a; --sev-info-bg:#eef0f2;
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --fg:#e6e8eb; --muted:#9aa4af; --line:#30363d; --accent:#4ea1ff; --bad:#ff7b72; --ok:#3fb950; --bg:#0d1117; --card:#161b22; }
+    :root {
+      --fg:#e6e8eb; --muted:#9aa4af; --line:#30363d; --accent:#4ea1ff; --bad:#ff7b72; --ok:#3fb950; --bg:#0d1117; --card:#161b22;
+      --sev-high-fg:#ffa198; --sev-high-bg:#3d1214; --sev-medium-fg:#e3b341; --sev-medium-bg:#3a2a0b;
+      --sev-low-fg:#79c0ff; --sev-low-bg:#0f2a4a; --sev-info-fg:#9aa4af; --sev-info-bg:#21262d;
+    }
   }
   body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 32px 16px; }
   main { max-width: 1000px; margin: 0 auto; }
@@ -16,40 +27,152 @@
   .demo { background: var(--card); border-left: 4px solid var(--accent); padding: 8px 12px; margin-bottom: 16px; }
   .total { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin-bottom: 28px; }
   .total .big { font-size: 34px; font-weight: 700; color: var(--bad); }
+  .severities { margin-top: 8px; }
   .table-wrap { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-size: 13px; color: var(--muted); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th .sort { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; white-space: nowrap; }
+  th .sort::after { content: " \2195"; opacity: .45; }
+  th[aria-sort="ascending"] .sort::after { content: " \25B2"; opacity: 1; }
+  th[aria-sort="descending"] .sort::after { content: " \25BC"; opacity: 1; }
+  th .sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   code { font-size: 13px; }
   code.cmd { display: inline-block; margin-top: 4px; color: var(--muted); word-break: break-all; }
   h2 { font-size: 18px; margin: 28px 0 8px; }
   a { color: var(--accent); }
-  .sev { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; border: 1px solid var(--line); }
-  .sev-high { color: var(--bad); border-color: var(--bad); }
-  .sev-medium { color: var(--accent); border-color: var(--accent); }
+  .sev { display: inline-block; font-size: 12px; font-weight: 600; line-height: 1.5; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+  .sev-high { color: var(--sev-high-fg); background: var(--sev-high-bg); }
+  .sev-medium { color: var(--sev-medium-fg); background: var(--sev-medium-bg); }
+  .sev-low { color: var(--sev-low-fg); background: var(--sev-low-bg); }
+  .sev-info { color: var(--sev-info-fg); background: var(--sev-info-bg); }
   .trend { font-size: 12px; font-weight: 600; white-space: nowrap; }
   .trend-new { color: var(--bad); }
   .trend-resolved { color: var(--ok); }
+  .chart { margin: 0 0 8px; max-width: 760px; }
+  .chart svg { display: block; overflow: visible; }
+  .chart .bar { fill: var(--accent); }
+  .chart .hit { fill: transparent; }
+  .chart g:hover .bar { opacity: .8; }
+  .chart .label { fill: var(--fg); font-size: 14px; }
+  .chart .count, .chart figcaption { fill: var(--muted); color: var(--muted); }
+  .chart .value { fill: var(--fg); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chart figcaption { font-size: 13px; margin-top: 4px; }
   footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
+  @media print {
+    :root {
+      color-scheme: light;
+      --fg:#000; --muted:#444; --line:#c8ccd1; --accent:#0a66c2; --bad:#b42318; --ok:#1a7f37; --bg:#fff; --card:#fff;
+      --sev-high-fg:#a4161a; --sev-high-bg:#fde8e7; --sev-medium-fg:#8a4b00; --sev-medium-bg:#fff1d6;
+      --sev-low-fg:#0a4f96; --sev-low-bg:#e5f0fb; --sev-info-fg:#57606a; --sev-info-bg:#eef0f2;
+    }
+    @page { margin: 14mm; }
+    body { font-size: 10.5pt; padding: 0; }
+    main { max-width: none; }
+    .total .big { font-size: 22pt; }
+    .table-wrap { overflow: visible; }
+    table { font-size: 9pt; }
+    code { font-size: 8.5pt; }
+    thead { display: table-header-group; }
+    tr, .total, .chart, li { break-inside: avoid; }
+    h2 { break-after: avoid; }
+    th .sort::after { content: none; }
+    .sev, .chart .bar, .demo { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    a { color: inherit; text-decoration: none; }
+    .why a::after { content: " (" attr(href) ")"; font-size: 8pt; color: var(--muted); word-break: break-all; }
+  }
 </style>
 </head>
 <body>
 <main>
   <h1>Azure Kostencheck: Verschwendungsbericht</h1>
-  <div class="meta">Bereich <code>demo (Contoso)</code> · 2026-10-04</div>
+  <div class="meta">Bereich <code>demo (Contoso)</code> · 2026-10-05</div>
 <div class="demo"><strong>Demo-Daten:</strong> fiktive Subscriptions und Beispielpreise, keine echte Umgebung.</div>
   <div class="total">
     Sie verlieren ca.
     <div class="big">509,03 € pro Monat</div>
     ≈ 6.108,36 € pro Jahr durch 15 ungenutzte Ressourcen.
-<br>Die Ressourcen kosten zusammen ca. 533,36 € pro Monat; eingespart wird weniger, weil verkleinerte Ressourcen weiter etwas kosten (Spalten „Kosten“ und „Einsparung“).<br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).<br>Dazu 6 kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).  </div>
+<br>Die Ressourcen kosten zusammen ca. 533,36 € pro Monat; eingespart wird weniger, weil verkleinerte Ressourcen weiter etwas kosten (Spalten „Kosten“ und „Einsparung“).<br>1 Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).<br>Dazu 6 kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).<div class="severities">Nach Priorität: <span class="sev sev-high">hoch</span> 2 · <span class="sev sev-medium">mittel</span> 7 · <span class="sev sev-low">niedrig</span> 6</div>  </div>
+
+  <h2 id="nach-problem">Einsparpotenzial nach Problem</h2>
+  <figure class="chart">
+    <svg width="100%" height="352" role="img" aria-labelledby="chart-title chart-desc">
+      <title id="chart-title">Einsparung pro Monat nach Problem</title>
+      <desc id="chart-desc">VM gestoppt, aber nicht dealloziert: 156,37 € (2 Ressource(n)); Leerer App-Service-Plan: 140,01 € (2 Ressource(n)); Nicht angehängte Managed Disk: 68,99 € (2 Ressource(n)); Premium-Disk an deallozierter VM: 51,70 € (2 Ressource(n)); Alter Disk-Snapshot: 40,27 € (3 Ressource(n)); NAT-Gateway ohne Subnetz: 28,91 € (1 Ressource(n)); Load Balancer ohne Backend: 16,06 € (1 Ressource(n)); Ungenutzte öffentliche IP-Adresse: 6,72 € (2 Ressource(n))</desc>
+      <g transform="translate(0 0)">
+        <title>VM gestoppt, aber nicht dealloziert: 156,37 € pro Monat, 2 Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">VM gestoppt, aber nicht dealloziert <tspan class="count">(2)</tspan></text>
+        <rect class="bar" y="22" width="75.0%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="75.0%" dx="8" y="33.5">156,37 €</text>
+      </g>
+      <g transform="translate(0 44)">
+        <title>Leerer App-Service-Plan: 140,01 € pro Monat, 2 Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">Leerer App-Service-Plan <tspan class="count">(2)</tspan></text>
+        <rect class="bar" y="22" width="67.15%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="67.15%" dx="8" y="33.5">140,01 €</text>
+      </g>
+      <g transform="translate(0 88)">
+        <title>Nicht angehängte Managed Disk: 68,99 € pro Monat, 2 Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">Nicht angehängte Managed Disk <tspan class="count">(2)</tspan></text>
+        <rect class="bar" y="22" width="33.09%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="33.09%" dx="8" y="33.5">68,99 €</text>
+      </g>
+      <g transform="translate(0 132)">
+        <title>Premium-Disk an deallozierter VM: 51,70 € pro Monat, 2 Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">Premium-Disk an deallozierter VM <tspan class="count">(2)</tspan></text>
+        <rect class="bar" y="22" width="24.8%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="24.8%" dx="8" y="33.5">51,70 €</text>
+      </g>
+      <g transform="translate(0 176)">
+        <title>Alter Disk-Snapshot: 40,27 € pro Monat, 3 Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">Alter Disk-Snapshot <tspan class="count">(3)</tspan></text>
+        <rect class="bar" y="22" width="19.31%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="19.31%" dx="8" y="33.5">40,27 €</text>
+      </g>
+      <g transform="translate(0 220)">
+        <title>NAT-Gateway ohne Subnetz: 28,91 € pro Monat, 1 Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">NAT-Gateway ohne Subnetz <tspan class="count">(1)</tspan></text>
+        <rect class="bar" y="22" width="13.87%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="13.87%" dx="8" y="33.5">28,91 €</text>
+      </g>
+      <g transform="translate(0 264)">
+        <title>Load Balancer ohne Backend: 16,06 € pro Monat, 1 Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">Load Balancer ohne Backend <tspan class="count">(1)</tspan></text>
+        <rect class="bar" y="22" width="7.7%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="7.7%" dx="8" y="33.5">16,06 €</text>
+      </g>
+      <g transform="translate(0 308)">
+        <title>Ungenutzte öffentliche IP-Adresse: 6,72 € pro Monat, 2 Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">Ungenutzte öffentliche IP-Adresse <tspan class="count">(2)</tspan></text>
+        <rect class="bar" y="22" width="3.22%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="3.22%" dx="8" y="33.5">6,72 €</text>
+      </g>
+    </svg>
+    <figcaption>Einsparung pro Monat je Problem (Anzahl Ressourcen in Klammern); zusammen ca. 509,03 €.</figcaption>
+  </figure>
 
   <h2 id="entwicklung">Entwicklung seit dem letzten Bericht</h2>
   <p>Letzter Bericht vom 2026-09-04: ca. 519,00 € pro Monat. Jetzt ca. 509,03 €, also <strong>-9,97 € pro Monat</strong>.</p>
   <p>2 neu (+77,34 €), 2 behoben (-151,55 €), 13 unverändert, davon 1 mit geändertem Betrag (+64,24 €).</p>
   <div class="table-wrap">
-  <table>
+  <table class="sortable">
     <thead><tr><th>Status</th><th>Ressource</th><th>Problem</th><th>Subscription</th><th class="num">vorher €/Monat</th><th class="num">jetzt €/Monat</th></tr></thead>
     <tbody>
       <tr>
@@ -99,13 +222,13 @@
   <h2>Subscription <code>11111111-1111-1111-1111-111111111111</code></h2>
   <p>Ca. <strong>444,12 € pro Monat</strong> durch 6 Ressource(n).</p>
   <div class="table-wrap">
-  <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten €/Monat</th><th class="num">Einsparung €/Monat</th><th>Empfehlung</th></tr></thead>
+  <table class="sortable">
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten €/Monat</th><th class="num" aria-sort="descending">Einsparung €/Monat</th><th class="nosort">Empfehlung</th></tr></thead>
     <tbody>
       <tr>
         <td><code>build-agent-02</code></td>
         <td>VM gestoppt, aber nicht dealloziert</td>
-        <td><span class="sev sev-high">hoch</span></td>
+        <td data-sort="3"><span class="sev sev-high">hoch</span></td>
         <td>rg-test</td>
         <td>Standard_D4s_v5</td>
         <td class="num">148,19 €</td>
@@ -115,7 +238,7 @@
       <tr>
         <td><code>asp-intranet-legacy</code></td>
         <td>Leerer App-Service-Plan</td>
-        <td><span class="sev sev-medium">mittel</span></td>
+        <td data-sort="2"><span class="sev sev-medium">mittel</span></td>
         <td>rg-intranet</td>
         <td>S1, 2 Instanz(en)</td>
         <td class="num">128,48 €</td>
@@ -125,7 +248,7 @@
       <tr>
         <td><code>erp-db-old-data</code></td>
         <td>Nicht angehängte Managed Disk</td>
-        <td><span class="sev sev-medium">mittel</span></td>
+        <td data-sort="2"><span class="sev sev-medium">mittel</span></td>
         <td>rg-legacy-erp</td>
         <td>Premium_LRS (512 GB)</td>
         <td class="num">67,58 €</td>
@@ -135,7 +258,7 @@
       <tr>
         <td><code>sap-test-db-data</code></td>
         <td>Premium-Disk an deallozierter VM</td>
-        <td><span class="sev sev-medium">mittel</span></td>
+        <td data-sort="2"><span class="sev sev-medium">mittel</span></td>
         <td>rg-sap-test</td>
         <td>Premium_LRS (512 GB), 75 Tage dealloziert</td>
         <td class="num">67,58 €</td>
@@ -145,7 +268,7 @@
       <tr>
         <td><code>natgw-old-hub</code></td>
         <td>NAT-Gateway ohne Subnetz</td>
-        <td><span class="sev sev-medium">mittel</span></td>
+        <td data-sort="2"><span class="sev sev-medium">mittel</span></td>
         <td>rg-network-old</td>
         <td>Standard</td>
         <td class="num">28,91 €</td>
@@ -155,7 +278,7 @@
       <tr>
         <td><code>erp-db-before-migration</code></td>
         <td>Alter Disk-Snapshot</td>
-        <td><span class="sev sev-low">niedrig</span></td>
+        <td data-sort="1"><span class="sev sev-low">niedrig</span></td>
         <td>rg-legacy-erp</td>
         <td>Standard_LRS (512 GB), 324 Tage alt</td>
         <td class="num">22,53 €</td>
@@ -168,13 +291,13 @@
   <h2>Subscription <code>00000000-0000-0000-0000-000000000000</code></h2>
   <p>Ca. <strong>64,91 € pro Monat</strong> durch 9 Ressource(n).</p>
   <div class="table-wrap">
-  <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten €/Monat</th><th class="num">Einsparung €/Monat</th><th>Empfehlung</th></tr></thead>
+  <table class="sortable">
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten €/Monat</th><th class="num" aria-sort="descending">Einsparung €/Monat</th><th class="nosort">Empfehlung</th></tr></thead>
     <tbody>
       <tr>
         <td><code>web-os-before-upgrade</code></td>
         <td>Alter Disk-Snapshot</td>
-        <td><span class="sev sev-low">niedrig</span></td>
+        <td data-sort="1"><span class="sev sev-low">niedrig</span></td>
         <td>rg-web-old</td>
         <td>Premium_LRS (128 GB), 124 Tage alt</td>
         <td class="num">16,33 €</td>
@@ -184,7 +307,7 @@
       <tr>
         <td><code>lb-web-old</code></td>
         <td>Load Balancer ohne Backend</td>
-        <td><span class="sev sev-low">niedrig</span></td>
+        <td data-sort="1"><span class="sev sev-low">niedrig</span></td>
         <td>rg-web-old</td>
         <td>Standard, 2 Regel(n)</td>
         <td class="num">16,06 €</td>
@@ -194,7 +317,7 @@
       <tr>
         <td><code>awf-empty-plan</code></td>
         <td>Leerer App-Service-Plan</td>
-        <td><span class="sev sev-medium">mittel</span></td>
+        <td data-sort="2"><span class="sev sev-medium">mittel</span></td>
         <td>awf-waste-demo-rg</td>
         <td>B1, 1 Instanz(en)</td>
         <td class="num">11,53 €</td>
@@ -204,7 +327,7 @@
       <tr>
         <td><code>awf-stopped-vm</code></td>
         <td>VM gestoppt, aber nicht dealloziert</td>
-        <td><span class="sev sev-high">hoch</span></td>
+        <td data-sort="3"><span class="sev sev-high">hoch</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard_B1s</td>
         <td class="num">8,18 €</td>
@@ -214,7 +337,7 @@
       <tr>
         <td><code>awf-orphaned-pip</code></td>
         <td>Ungenutzte öffentliche IP-Adresse</td>
-        <td><span class="sev sev-low">niedrig</span></td>
+        <td data-sort="1"><span class="sev sev-low">niedrig</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard</td>
         <td class="num">3,36 €</td>
@@ -224,7 +347,7 @@
       <tr>
         <td><code>pip-old-gateway</code></td>
         <td>Ungenutzte öffentliche IP-Adresse</td>
-        <td><span class="sev sev-low">niedrig</span></td>
+        <td data-sort="1"><span class="sev sev-low">niedrig</span></td>
         <td>rg-web-old</td>
         <td>Standard</td>
         <td class="num">3,36 €</td>
@@ -234,7 +357,7 @@
       <tr>
         <td><code>web-old-vm-osdisk</code></td>
         <td>Premium-Disk an deallozierter VM</td>
-        <td><span class="sev sev-medium">mittel</span></td>
+        <td data-sort="2"><span class="sev sev-medium">mittel</span></td>
         <td>rg-web-old</td>
         <td>StandardSSD_LRS (128 GB), 40 Tage dealloziert</td>
         <td class="num">8,45 €</td>
@@ -244,7 +367,7 @@
       <tr>
         <td><code>awf-orphaned-disk</code></td>
         <td>Nicht angehängte Managed Disk</td>
-        <td><span class="sev sev-medium">mittel</span></td>
+        <td data-sort="2"><span class="sev sev-medium">mittel</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard_LRS (32 GB)</td>
         <td class="num">1,41 €</td>
@@ -254,7 +377,7 @@
       <tr>
         <td><code>awf-old-snapshot</code></td>
         <td>Alter Disk-Snapshot</td>
-        <td><span class="sev sev-low">niedrig</span></td>
+        <td data-sort="1"><span class="sev sev-low">niedrig</span></td>
         <td>awf-waste-demo-rg</td>
         <td>Standard_LRS (32 GB), 45 Tage alt</td>
         <td class="num">1,41 €</td>
@@ -268,8 +391,8 @@
   <h2 id="aufraeumen">Aufräumen (kostenlos)</h2>
   <p>Diese Ressourcen kosten nichts und zählen nicht zur Summe oben. Aufräumen schafft Übersicht und vermeidet Fehler.</p>
   <div class="table-wrap">
-  <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Subscription</th><th>Ressourcengruppe</th><th>Empfehlung</th></tr></thead>
+  <table class="sortable">
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Subscription</th><th>Ressourcengruppe</th><th class="nosort">Empfehlung</th></tr></thead>
     <tbody>
       <tr>
         <td><code>awf-idle-lb</code></td>
@@ -316,7 +439,7 @@
     </tbody>
   </table>
   </div>
-  <ul>
+  <ul class="why">
     <li><strong>Load Balancer ohne Backend:</strong> Ein Standard Load Balancer wird pro Stunde für seine Lastenausgleichs- und Ausgangsregeln verrechnet, auch ohne Backend-Mitglieder. Ohne Regeln fällt keine Stundengebühr an; dann ist es nur ein Hinweis. (<a href="https://learn.microsoft.com/azure/load-balancer/load-balancer-overview">Doku</a>)</li>
     <li><strong>Leere Ressourcengruppe:</strong> Kostet nichts, macht aber Zuständigkeiten, Budgets und Berechtigungen unübersichtlich; oft der Rest eines abgeschlossenen Projekts. (<a href="https://learn.microsoft.com/azure/azure-resource-manager/management/manage-resource-groups-cli">Doku</a>)</li>
     <li><strong>Verwaiste Netzwerkschnittstelle:</strong> Kostet nichts, belegt aber eine private IP-Adresse im Subnetz und bleibt oft nach dem Löschen einer VM zurück. (<a href="https://learn.microsoft.com/azure/virtual-network/virtual-network-network-interface">Doku</a>)</li>
@@ -324,7 +447,7 @@
   </ul>
 
   <h2>Warum kostet das Geld?</h2>
-  <ul>
+  <ul class="why">
     <li><strong>Nicht angehängte Managed Disk:</strong> Disks werden nach bereitgestellter Größe abgerechnet, auch wenn keine VM sie nutzt. (<a href="https://learn.microsoft.com/azure/virtual-machines/windows/find-unattached-disks">Doku</a>)</li>
     <li><strong>VM gestoppt, aber nicht dealloziert:</strong> Im Zustand &#39;Stopped&#39; bleibt die Hardware reserviert und die Rechenleistung wird weiter verrechnet. (<a href="https://learn.microsoft.com/azure/virtual-machines/states-billing">Doku</a>)</li>
     <li><strong>Ungenutzte öffentliche IP-Adresse:</strong> Standard-IPs werden pro Stunde verrechnet, auch ohne Zuordnung. (<a href="https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses">Doku</a>)</li>
@@ -337,5 +460,38 @@
 
   <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>Preise: Azure Retail Prices API (Listenpreise in EUR, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.</footer>
 </main>
+<script>
+// Sortable tables (progressive enhancement): without JavaScript they keep their order, most savings first.
+document.querySelectorAll("table.sortable").forEach(function (table) {
+  var heads = Array.prototype.slice.call(table.tHead.rows[0].cells);
+  function key(cell, numeric) {
+    if (cell.hasAttribute("data-sort")) return Number(cell.getAttribute("data-sort"));
+    var text = cell.textContent.trim();
+    if (!numeric) return text.toLowerCase();
+    var n = parseFloat(text.replace(/[^0-9,+-]/g, "").replace(",", "."));  // "1.234,50 €" -> 1234.5
+    return isNaN(n) ? -1e15 : n;  // "n/a", "–"
+  }
+  heads.forEach(function (th, col) {
+    if (th.classList.contains("nosort")) return;
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "sort";
+    while (th.firstChild) button.appendChild(th.firstChild);
+    th.appendChild(button);
+    button.addEventListener("click", function () {
+      var ascending = th.getAttribute("aria-sort") !== "ascending";
+      heads.forEach(function (h) { h.removeAttribute("aria-sort"); });
+      th.setAttribute("aria-sort", ascending ? "ascending" : "descending");
+      var numeric = th.classList.contains("num");
+      var body = table.tBodies[0];
+      Array.prototype.slice.call(body.rows).sort(function (a, b) {
+        var x = key(a.cells[col], numeric), y = key(b.cells[col], numeric);
+        var order = typeof x === "number" ? x - y : x.localeCompare(y, "de");
+        return ascending ? order : -order;
+      }).forEach(function (row) { body.appendChild(row); });
+    });
+  });
+});
+</script>
 </body>
 </html>

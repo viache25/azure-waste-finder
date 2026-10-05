@@ -3,11 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Azure Kostencheck</title>
 <style>
-  :root { --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea; --accent:#0a66c2; --bad:#b42318; --ok:#1a7f37; --bg:#fff; --card:#f6f8fa; }
+  /* Self-contained: no web fonts, no CDN, no external files. Light, dark (prefers-color-scheme) and print. */
+  :root {
+    color-scheme: light dark;
+    --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea; --accent:#0a66c2; --bad:#b42318; --ok:#1a7f37; --bg:#fff; --card:#f6f8fa;
+    --sev-high-fg:#a4161a; --sev-high-bg:#fde8e7; --sev-medium-fg:#8a4b00; --sev-medium-bg:#fff1d6;
+    --sev-low-fg:#0a4f96; --sev-low-bg:#e5f0fb; --sev-info-fg:#57606a; --sev-info-bg:#eef0f2;
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --fg:#e6e8eb; --muted:#9aa4af; --line:#30363d; --accent:#4ea1ff; --bad:#ff7b72; --ok:#3fb950; --bg:#0d1117; --card:#161b22; }
+    :root {
+      --fg:#e6e8eb; --muted:#9aa4af; --line:#30363d; --accent:#4ea1ff; --bad:#ff7b72; --ok:#3fb950; --bg:#0d1117; --card:#161b22;
+      --sev-high-fg:#ffa198; --sev-high-bg:#3d1214; --sev-medium-fg:#e3b341; --sev-medium-bg:#3a2a0b;
+      --sev-low-fg:#79c0ff; --sev-low-bg:#0f2a4a; --sev-info-fg:#9aa4af; --sev-info-bg:#21262d;
+    }
   }
   body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 32px 16px; }
   main { max-width: 1000px; margin: 0 auto; }
@@ -16,22 +27,61 @@
   .demo { background: var(--card); border-left: 4px solid var(--accent); padding: 8px 12px; margin-bottom: 16px; }
   .total { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin-bottom: 28px; }
   .total .big { font-size: 34px; font-weight: 700; color: var(--bad); }
+  .severities { margin-top: 8px; }
   .table-wrap { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-size: 13px; color: var(--muted); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th .sort { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; white-space: nowrap; }
+  th .sort::after { content: " \2195"; opacity: .45; }
+  th[aria-sort="ascending"] .sort::after { content: " \25B2"; opacity: 1; }
+  th[aria-sort="descending"] .sort::after { content: " \25BC"; opacity: 1; }
+  th .sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   code { font-size: 13px; }
   code.cmd { display: inline-block; margin-top: 4px; color: var(--muted); word-break: break-all; }
   h2 { font-size: 18px; margin: 28px 0 8px; }
   a { color: var(--accent); }
-  .sev { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; border: 1px solid var(--line); }
-  .sev-high { color: var(--bad); border-color: var(--bad); }
-  .sev-medium { color: var(--accent); border-color: var(--accent); }
+  .sev { display: inline-block; font-size: 12px; font-weight: 600; line-height: 1.5; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+  .sev-high { color: var(--sev-high-fg); background: var(--sev-high-bg); }
+  .sev-medium { color: var(--sev-medium-fg); background: var(--sev-medium-bg); }
+  .sev-low { color: var(--sev-low-fg); background: var(--sev-low-bg); }
+  .sev-info { color: var(--sev-info-fg); background: var(--sev-info-bg); }
   .trend { font-size: 12px; font-weight: 600; white-space: nowrap; }
   .trend-new { color: var(--bad); }
   .trend-resolved { color: var(--ok); }
+  .chart { margin: 0 0 8px; max-width: 760px; }
+  .chart svg { display: block; overflow: visible; }
+  .chart .bar { fill: var(--accent); }
+  .chart .hit { fill: transparent; }
+  .chart g:hover .bar { opacity: .8; }
+  .chart .label { fill: var(--fg); font-size: 14px; }
+  .chart .count, .chart figcaption { fill: var(--muted); color: var(--muted); }
+  .chart .value { fill: var(--fg); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chart figcaption { font-size: 13px; margin-top: 4px; }
   footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
+  @media print {
+    :root {
+      color-scheme: light;
+      --fg:#000; --muted:#444; --line:#c8ccd1; --accent:#0a66c2; --bad:#b42318; --ok:#1a7f37; --bg:#fff; --card:#fff;
+      --sev-high-fg:#a4161a; --sev-high-bg:#fde8e7; --sev-medium-fg:#8a4b00; --sev-medium-bg:#fff1d6;
+      --sev-low-fg:#0a4f96; --sev-low-bg:#e5f0fb; --sev-info-fg:#57606a; --sev-info-bg:#eef0f2;
+    }
+    @page { margin: 14mm; }
+    body { font-size: 10.5pt; padding: 0; }
+    main { max-width: none; }
+    .total .big { font-size: 22pt; }
+    .table-wrap { overflow: visible; }
+    table { font-size: 9pt; }
+    code { font-size: 8.5pt; }
+    thead { display: table-header-group; }
+    tr, .total, .chart, li { break-inside: avoid; }
+    h2 { break-after: avoid; }
+    th .sort::after { content: none; }
+    .sev, .chart .bar, .demo { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    a { color: inherit; text-decoration: none; }
+    .why a::after { content: " (" attr(href) ")"; font-size: 8pt; color: var(--muted); word-break: break-all; }
+  }
 </style>
 </head>
 <body>
@@ -50,7 +100,29 @@
     {% if summary.ignored %}<br>{{ summary.ignored }} Ressource(n) ignoriert (Tag <code>waste-finder:ignore=true</code> oder Ausschluss in der Konfiguration).{% endif %}
     {% if summary.below_threshold %}<br>{{ summary.below_threshold }} Ressource(n) unter der Schwelle von {{ min_savings | eur }} pro Monat nicht aufgeführt.{% endif %}
     {% if summary.cleanup %}<br>Dazu {{ summary.cleanup }} kostenlose Ressource(n) zum Aufräumen, nicht in der Summe enthalten (Abschnitt „Aufräumen (kostenlos)“).{% endif %}
+    {% if severity_counts %}<div class="severities">Nach Priorität: {% for severity, n in severity_counts.items() %}<span class="sev sev-{{ severity }}">{{ severities[severity] }}</span> {{ n }}{{ " · " if not loop.last }}{% endfor %}</div>{% endif %}
   </div>
+
+  {% if chart %}
+  <h2 id="nach-problem">Einsparpotenzial nach Problem</h2>
+  <figure class="chart">
+    <svg width="100%" height="{{ chart | length * 44 }}" role="img" aria-labelledby="chart-title chart-desc">
+      <title id="chart-title">Einsparung pro Monat nach Problem</title>
+      <desc id="chart-desc">{% for bar in chart %}{{ bar.label }}: {{ bar.monthly_eur | eur }} ({{ bar.count }} Ressource(n)){{ "; " if not loop.last }}{% endfor %}</desc>
+      {% for bar in chart %}
+      <g transform="translate(0 {{ loop.index0 * 44 }})">
+        <title>{{ bar.label }}: {{ bar.monthly_eur | eur }} pro Monat, {{ bar.count }} Ressource(n)</title>
+        <rect class="hit" width="100%" height="44"></rect>
+        <text class="label" x="0" y="15">{{ bar.label }} <tspan class="count">({{ bar.count }})</tspan></text>
+        <rect class="bar" y="22" width="{{ bar.percent }}%" height="14" rx="4"></rect>
+        <rect class="bar" y="22" width="4" height="14"></rect>
+        <text class="value" x="{{ bar.percent }}%" dx="8" y="33.5">{{ bar.monthly_eur | eur }}</text>
+      </g>
+      {% endfor %}
+    </svg>
+    <figcaption>Einsparung pro Monat je Problem (Anzahl Ressourcen in Klammern); zusammen ca. {{ summary.monthly_eur | eur }}.</figcaption>
+  </figure>
+  {% endif %}
 
   {% if trend %}
   <h2 id="entwicklung">Entwicklung seit dem letzten Bericht</h2>
@@ -59,7 +131,7 @@
   {% if trend.previous.cost_source != cost_source_name %}<p>Der letzte Bericht nutzte {{ "Ist-Kosten" if trend.previous.cost_source == "actual" else "Listenpreise" }}; ein Teil der Änderung kann von der anderen Kostenquelle kommen.</p>{% endif %}
   {% if trend_rows %}
   <div class="table-wrap">
-  <table>
+  <table class="sortable">
     <thead><tr><th>Status</th><th>Ressource</th><th>Problem</th><th>Subscription</th><th class="num">vorher {{ currency_symbol }}/Monat</th><th class="num">jetzt {{ currency_symbol }}/Monat</th></tr></thead>
     <tbody>
     {% for row in trend_rows %}
@@ -84,14 +156,14 @@
   <h2>Subscription <code>{{ group.subscription_id or "unbekannt" }}</code></h2>
   <p>Ca. <strong>{{ group.monthly_eur | eur }} pro Monat</strong> durch {{ group.findings | length }} Ressource(n).</p>
   <div class="table-wrap">
-  <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten {{ currency_symbol }}/Monat</th><th class="num">Einsparung {{ currency_symbol }}/Monat</th>{% if actual %}<th>Quelle</th>{% endif %}<th>Empfehlung</th></tr></thead>
+  <table class="sortable">
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Priorität</th><th>Ressourcengruppe</th><th>SKU</th><th class="num">Kosten {{ currency_symbol }}/Monat</th><th class="num" aria-sort="descending">Einsparung {{ currency_symbol }}/Monat</th>{% if actual %}<th>Quelle</th>{% endif %}<th class="nosort">Empfehlung</th></tr></thead>
     <tbody>
     {% for f in group.findings %}
       <tr>
         <td><code>{{ f.name }}</code></td>
         <td>{{ rules[f.rule].title_de }}</td>
-        <td><span class="sev sev-{{ f.severity }}">{{ severities[f.severity] }}</span></td>
+        <td data-sort="{{ severity_rank[f.severity] }}"><span class="sev sev-{{ f.severity }}">{{ severities[f.severity] }}</span></td>
         <td>{{ f.resource_group }}</td>
         <td>{{ f.sku }}{% if f.size_gb %} ({{ f.size_gb }} GB){% endif %}{% if f.age_days is not none %}, {{ f.age_days }} {{ rules[f.rule].age_label_de }}{% endif %}{% if f.quantity is not none and rules[f.rule].quantity_unit_de %}, {{ f.quantity }} {{ rules[f.rule].quantity_unit_de }}{% endif %}</td>
         <td class="num">{{ f.monthly_cost_eur | eur }}</td>
@@ -111,8 +183,8 @@
   <h2 id="aufraeumen">Aufräumen (kostenlos)</h2>
   <p>Diese Ressourcen kosten nichts und zählen nicht zur Summe oben. Aufräumen schafft Übersicht und vermeidet Fehler.</p>
   <div class="table-wrap">
-  <table>
-    <thead><tr><th>Ressource</th><th>Problem</th><th>Subscription</th><th>Ressourcengruppe</th><th>Empfehlung</th></tr></thead>
+  <table class="sortable">
+    <thead><tr><th>Ressource</th><th>Problem</th><th>Subscription</th><th>Ressourcengruppe</th><th class="nosort">Empfehlung</th></tr></thead>
     <tbody>
     {% for f in cleanup %}
       <tr>
@@ -126,7 +198,7 @@
     </tbody>
   </table>
   </div>
-  <ul>
+  <ul class="why">
   {% for rule_id in cleanup | map(attribute="rule") | unique %}
     <li><strong>{{ rules[rule_id].title_de }}:</strong> {{ rules[rule_id].why_de }} (<a href="{{ rules[rule_id].docs_url }}">Doku</a>)</li>
   {% endfor %}
@@ -134,7 +206,7 @@
   {% endif %}
 
   <h2>Warum kostet das Geld?</h2>
-  <ul>
+  <ul class="why">
   {% for rule in rules.values() if rule.pricing != "free" %}
     <li><strong>{{ rule.title_de }}:</strong> {{ rule.why_de }} (<a href="{{ rule.docs_url }}">Doku</a>)</li>
   {% endfor %}
@@ -142,5 +214,38 @@
 
   <footer>Das Tool ändert nichts in der Subscription; die Befehle erst prüfen, dann ausführen.<br>{% if actual %}Kosten: Ist-Kosten aus Azure Cost Management, wo vorhanden (amortisierte Kosten {{ cost_period }} je Ressource, die Summe der 30 Tage gilt als Monatswert); sonst Listenpreise der Azure Retail Prices API (in {{ currency }}, 730 h/Monat), die durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen können.{% else %}Preise: Azure Retail Prices API (Listenpreise in {{ currency }}, 730 h/Monat). Tatsächliche Preise können durch Rabatte (EA/CSP, Reservierungen, Azure Hybrid Benefit) abweichen.{% endif %}</footer>
 </main>
+<script>
+// Sortable tables (progressive enhancement): without JavaScript they keep their order, most savings first.
+document.querySelectorAll("table.sortable").forEach(function (table) {
+  var heads = Array.prototype.slice.call(table.tHead.rows[0].cells);
+  function key(cell, numeric) {
+    if (cell.hasAttribute("data-sort")) return Number(cell.getAttribute("data-sort"));
+    var text = cell.textContent.trim();
+    if (!numeric) return text.toLowerCase();
+    var n = parseFloat(text.replace(/[^0-9,+-]/g, "").replace(",", "."));  // "1.234,50 €" -> 1234.5
+    return isNaN(n) ? -1e15 : n;  // "n/a", "–"
+  }
+  heads.forEach(function (th, col) {
+    if (th.classList.contains("nosort")) return;
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "sort";
+    while (th.firstChild) button.appendChild(th.firstChild);
+    th.appendChild(button);
+    button.addEventListener("click", function () {
+      var ascending = th.getAttribute("aria-sort") !== "ascending";
+      heads.forEach(function (h) { h.removeAttribute("aria-sort"); });
+      th.setAttribute("aria-sort", ascending ? "ascending" : "descending");
+      var numeric = th.classList.contains("num");
+      var body = table.tBodies[0];
+      Array.prototype.slice.call(body.rows).sort(function (a, b) {
+        var x = key(a.cells[col], numeric), y = key(b.cells[col], numeric);
+        var order = typeof x === "number" ? x - y : x.localeCompare(y, "de");
+        return ascending ? order : -order;
+      }).forEach(function (row) { body.appendChild(row); });
+    });
+  });
+});
+</script>
 </body>
 </html>

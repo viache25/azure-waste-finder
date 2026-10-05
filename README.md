@@ -61,6 +61,8 @@ Dockerfile, .dockerignore  container image (multi-stage, non-root), pushed to GH
 infra/                    Terraform: resource group, 5 € budget alert, 3 waste resources
   extra-waste.tf          opt-in waste for the newer rules (enable_extra_waste = true)
   tests/*.tftest.hcl      terraform test with mocked providers (no Azure login)
+  github-oidc/            Terraform: OIDC identity for GitHub Actions (app registration, federated
+                          credentials, read-only roles), applied once by the owner
 scripts/stop-vm.(ps1|sh)  stops the demo VM WITHOUT deallocating it
 src/waste_finder/
   registry.py             one entry per rule: titles, severity, KQL file, pricing strategy, remediation
@@ -170,6 +172,52 @@ The demo environment uses the smallest SKUs (B1s VM, 32 GB Standard HDD, one Sta
 Snapshots are only reported once they are 30 days old; right after `apply`, run the finder with `--snapshot-min-age 0` to see it.
 
 If `terraform apply` says the VM size is not available, set `location` or `vm_size` in `terraform.tfvars`. If your subscription type does not support budgets, set `enable_budget = false`.
+
+## Connect GitHub to Azure
+
+The Azure workflows log in with **OpenID Connect**: GitHub gives each job a short-lived token, Entra ID trusts it through a federated credential, and no client secret exists anywhere. [`infra/github-oidc/`](infra/github-oidc) creates that identity with Terraform. Until the repository variables below are set, every Azure workflow skips its Azure job, so CI stays green without Azure.
+
+| Resource | Purpose |
+|---|---|
+| App registration `github-azure-waste-finder` + service principal | The identity the workflows log in as (single tenant, no secret, no certificate) |
+| Federated credential `github-branch` | Trusts subject `repo:viache25/azure-waste-finder:ref:refs/heads/main`: jobs without an environment in runs on `main` (scheduled and manual runs) |
+| Federated credential `github-environment` | Trusts subject `repo:viache25/azure-waste-finder:environment:azure-e2e`: jobs in the GitHub environment `azure-e2e` (the live end-to-end test) |
+| **Reader** + **Cost Management Reader** on the subscription | Resource Graph queries and `--cost-source actual`; nothing that can change a resource |
+| Optional (`enable_e2e = true`): resource group `awf-e2e-rg` + **Contributor on that group only** | The live end-to-end test deploys the demo waste into this group and destroys it again. The group is tagged `waste-finder:ignore=true`, so the empty group is not reported between runs |
+
+Prerequisites: Azure CLI, Terraform >= 1.7, GitHub CLI (`gh`). Your Azure account must be allowed to create app registrations (members can by default; otherwise the Entra role *Application Developer*) and role assignments on the subscription (*Owner*, *User Access Administrator* or *Role Based Access Control Administrator*).
+
+```bash
+az login
+cd infra/github-oidc
+terraform init
+terraform apply -var "subscription_id=$(az account show --query id -o tsv)"
+# with the resource group for the live end-to-end test:
+# terraform apply -var "subscription_id=$(az account show --query id -o tsv)" -var enable_e2e=true
+
+# Repository variables (IDs, not credentials). `terraform output -raw gh_variable_commands` prints these with your values.
+gh variable set AZURE_CLIENT_ID --repo viache25/azure-waste-finder --body "$(terraform output -raw client_id)"
+gh variable set AZURE_TENANT_ID --repo viache25/azure-waste-finder --body "$(terraform output -raw tenant_id)"
+gh variable set AZURE_SUBSCRIPTION_ID --repo viache25/azure-waste-finder --body "$(terraform output -raw subscription_id)"
+# only with enable_e2e = true:
+gh variable set AZURE_E2E_RESOURCE_GROUP --repo viache25/azure-waste-finder --body "$(terraform output -raw e2e_resource_group)"
+```
+
+| Repository variable | Value | Effect |
+|---|---|---|
+| `AZURE_CLIENT_ID` | output `client_id` | Azure jobs run only when this is set (`if: vars.AZURE_CLIENT_ID != ''`) |
+| `AZURE_TENANT_ID` | output `tenant_id` | Tenant for `azure/login` |
+| `AZURE_SUBSCRIPTION_ID` | output `subscription_id` | Subscription the workflows scan |
+| `AZURE_E2E_RESOURCE_GROUP` | output `e2e_resource_group` (`awf-e2e-rg`) | Resource group of the live end-to-end test |
+
+The live end-to-end test also needs the GitHub environment `azure-e2e` with you as required reviewer, so every run waits for your approval:
+
+```bash
+echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}]}" |
+  gh api -X PUT repos/viache25/azure-waste-finder/environments/azure-e2e --input -
+```
+
+Other settings: `-var github_repository=owner/name` for a fork, `-var github_branch=...` / `-var github_environment=...` for other subjects (if you customized the repository's OIDC subject claim template, the subjects must match it). The local Terraform state holds only IDs (no secret); `terraform destroy` in `infra/github-oidc` removes the identity, its role assignments and the E2E group. `terraform test` checks the subjects, issuer and audience, that the subscription roles are exactly Reader + Cost Management Reader, and that Contributor exists only with `enable_e2e` and only on the E2E group.
 
 ## Scope, rules and exclusions
 
@@ -284,6 +332,7 @@ Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`s
 ## Security
 
 - Authentication uses `DefaultAzureCredential`, i.e. your local `az login`. No keys or secrets in the code or the repo.
+- GitHub Actions log in to Azure with OIDC federated credentials (`infra/github-oidc/`): no client secret exists, only workflow runs on `main` and jobs in the `azure-e2e` environment are trusted, and the identity can only read the subscription (plus, opt-in, Contributor on the E2E resource group).
 - `*.tfstate` and `*.tfvars` are git-ignored: state contains resource IDs and the generated SSH key.
 - The demo VM has no public IP and password login is disabled; the orphaned disk denies public network access. `terraform test` checks all of this in CI.
 - The container image runs as a non-root user, and Trivy scans every image pushed to GHCR (report-only, Security tab).
@@ -301,6 +350,7 @@ ruff check . && ruff format --check .
 mypy                             # strict on src/
 cd infra && terraform init -backend=false && terraform test   # mocked providers, no Azure login, Terraform >= 1.11
 tflint --init && tflint          # in infra/, config in infra/.tflint.hcl
+cd infra/github-oidc && terraform init -backend=false && terraform test && tflint --init && tflint   # same for the OIDC root
 pip install pre-commit && pre-commit install   # ruff + terraform fmt before each commit
 pip install pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit -r /tmp/req.txt --no-deps --disable-pip
 pip install build twine && python -m build && twine check dist/*   # sdist + wheel, as in release.yml
@@ -315,7 +365,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 | `docker` | builds the image (not pushed), checks that it runs as uid 10001, runs `--version` and the demo in the container with a mounted output directory |
 | `package` | builds sdist + wheel like a release (`python -m build`, `twine check --strict`) and runs `--version` and the demo from the installed wheel outside the source tree |
 | `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor; JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
-| `terraform` | `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked azurerm/tls providers: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default), `tflint` with the azurerm ruleset |
+| `terraform` | for each Terraform root (`infra`, `infra/github-oidc`): `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked providers; `infra`: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default; `infra/github-oidc`: federated subjects, read-only subscription roles, Contributor only on the opt-in E2E group), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
 `.github/workflows/codeql.yml` runs CodeQL for Python on PRs, on `main` and weekly; alerts appear under Security → Code scanning.

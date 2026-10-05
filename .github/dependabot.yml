@@ -21,9 +21,9 @@ updates:
       github-actions-minor-and-patch:
         update-types: [minor, patch]
 
-  # azurerm / tls provider constraints in infra/
+  # Provider constraints of both Terraform roots (azurerm / tls in infra/, azuread / azurerm in infra/github-oidc/)
   - package-ecosystem: terraform
-    directory: /infra
+    directories: [/infra, /infra/github-oidc]
     schedule:
       interval: weekly
     groups:

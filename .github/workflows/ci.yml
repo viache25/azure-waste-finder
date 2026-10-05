@@ -122,16 +122,21 @@ jobs:
 
   terraform:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every Terraform root: the waste environment and the OIDC identity for GitHub Actions.
+        root: [infra, infra/github-oidc]
     defaults:
       run:
-        working-directory: infra
+        working-directory: ${{ matrix.root }}
     steps:
       - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v4
       - run: terraform fmt -check -recursive
       - run: terraform init -backend=false
       - run: terraform validate
-      # infra/tests/*.tftest.hcl, providers mocked: no Azure login, nothing is created
+      # <root>/tests/*.tftest.hcl, providers mocked: no Azure login, nothing is created
       - run: terraform test
       - uses: terraform-linters/setup-tflint@v6
       - run: tflint --init

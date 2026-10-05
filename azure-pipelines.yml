@@ -1,0 +1,107 @@
+# Azure DevOps equivalent of .github/workflows/finops-check.yml: weekly scan of the subscription with a
+# workload identity federation service connection (no secret), the report as pipeline artifact `finops-report`,
+# the trend against the previous run's report.json and the summary on the run page. Read-only: it creates
+# nothing in Azure, so it may run on a schedule (D3). Setup: docs/azure-devops.md. CI only checks that this
+# file parses (it never runs in GitHub Actions).
+
+trigger: none
+pr: none
+
+schedules:
+  - cron: "17 6 * * 1" # Mondays 06:17 UTC
+    displayName: Weekly FinOps check
+    branches:
+      include: [main]
+    always: true # also when nothing was committed since the last run
+
+parameters:
+  - name: costSource
+    displayName: Cost source (retail = list prices, actual = Cost Management)
+    type: string
+    default: retail
+    values: [retail, actual]
+  - name: failOver
+    displayName: Fail the run above this monthly amount (blank = never)
+    type: string
+    default: " " # a blank, because the run dialog rejects an empty string parameter
+
+variables:
+  # Name of the Azure Resource Manager service connection (workload identity federation, read-only roles).
+  # Service connections are resolved when the pipeline is compiled, so change the name here, not in the UI.
+  - name: azureServiceConnection
+    value: azure-waste-finder
+  - name: reportDir
+    value: $(Build.ArtifactStagingDirectory)/report
+  - name: previousDir
+    value: $(Pipeline.Workspace)/previous
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 0 # setuptools-scm derives the tool version (shown in the report) from the tags
+    fetchTags: true
+
+  - task: UsePythonVersion@0
+    displayName: Python 3.12
+    inputs:
+      versionSpec: "3.12"
+
+  - script: pip install .
+    displayName: Install waste-finder
+
+  # report.json of the latest earlier run on main, for the trend. Fails on the very first run (nothing to download);
+  # continueOnError keeps the pipeline going, the report then has no trend.
+  - task: DownloadPipelineArtifact@2
+    displayName: Previous report
+    continueOnError: true
+    inputs:
+      source: specific
+      project: $(System.TeamProjectId)
+      pipeline: $(System.DefinitionId)
+      runVersion: latestFromBranch
+      runBranch: refs/heads/main
+      allowPartiallySucceededBuilds: true
+      allowFailedBuilds: true
+      artifact: finops-report
+      path: $(previousDir)
+
+  # The Azure CLI is logged in with the service connection; DefaultAzureCredential uses that login.
+  - task: AzureCLI@2
+    displayName: Waste finder
+    env:
+      COST_SOURCE: ${{ parameters.costSource }}
+      FAIL_OVER: ${{ parameters.failOver }}
+      REPORT_DIR: $(reportDir)
+      PREVIOUS_REPORT: $(previousDir)/report.json
+    inputs:
+      azureSubscription: ${{ variables.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        # Pipeline variable AZURE_SUBSCRIPTION_ID scans another subscription; default: the connection's.
+        subscription="${AZURE_SUBSCRIPTION_ID:-$(az account show --query id -o tsv)}"
+        args=(--subscription "$subscription" --cost-source "$COST_SOURCE" --format "md,html,json"
+          --out-dir "$REPORT_DIR" --summary "$REPORT_DIR/summary.md")
+        if [ -s "$PREVIOUS_REPORT" ]; then
+          args+=(--previous "$PREVIOUS_REPORT")
+        fi
+        if [ -n "${FAIL_OVER// /}" ]; then
+          args+=(--fail-over "${FAIL_OVER// /}") # exit code 3 above the amount: the run fails and notifies
+        fi
+        waste-finder "${args[@]}"
+
+  # The German summary on the run page (like $GITHUB_STEP_SUMMARY), also when the threshold was exceeded.
+  - bash: |
+      if [ -s "$(reportDir)/summary.md" ]; then echo "##vso[task.uploadsummary]$(reportDir)/summary.md"; fi
+    displayName: Run summary
+    condition: succeededOrFailed()
+
+  - task: PublishPipelineArtifact@1
+    displayName: Publish report
+    condition: succeededOrFailed()
+    inputs:
+      targetPath: $(reportDir)
+      artifact: finops-report

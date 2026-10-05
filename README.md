@@ -58,6 +58,7 @@ flowchart LR
 
 ```
 Dockerfile, .dockerignore  container image (multi-stage, non-root), pushed to GHCR by cd.yml
+azure-pipelines.yml       Azure DevOps version of the weekly FinOps check (docs/azure-devops.md)
 infra/                    Terraform: resource group, 5 € budget alert, 3 waste resources
   extra-waste.tf          opt-in waste for the newer rules (enable_extra_waste = true)
   tests/*.tftest.hcl      terraform test with mocked providers (no Azure login)
@@ -79,9 +80,10 @@ src/waste_finder/
   cli.py                  python -m waste_finder
   demo/                   fictional subscriptions, sample prices, Cost Management answers and an earlier
                           report.json (so the demo report shows a trend) for --demo and tests
-tests/                    pytest (382 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (388 tests), runs fully offline, coverage floor 95 %
   fixtures/               recorded-format API responses (Cost Management)
 docs/report.schema.json   JSON Schema of report.json
+docs/azure-devops.md      setup of the Azure DevOps pipeline (service connection, pipeline, settings)
 ```
 
 Design choices:
@@ -282,6 +284,17 @@ az group delete --name awf-e2e-rg --yes
 cd infra/github-oidc && terraform apply -var "subscription_id=$(az account show --query id -o tsv)" -var enable_e2e=true
 ```
 
+## Azure DevOps pipeline
+
+[`azure-pipelines.yml`](azure-pipelines.yml) does the same as the scheduled FinOps check, for teams on Azure DevOps:
+
+- weekly schedule on `main` (Mondays 06:17 UTC) and manual runs;
+- `AzureCLI@2` with an Azure Resource Manager service connection using **workload identity federation**, so no secret is stored;
+- `waste-finder --format md,html,json` with the previous run's `report.json` for the trend;
+- the report as pipeline artifact `finops-report`, and the German summary on the run page.
+
+Instead of an issue, the optional run parameter `failOver` fails the run above a monthly amount. The service connection can reuse the read-only identity from `infra/github-oidc` via a second federated credential. Setup step by step: [docs/azure-devops.md](docs/azure-devops.md). GitHub CI only checks that the file parses and keeps its shape.
+
 ## Scope, rules and exclusions
 
 ```bash
@@ -423,7 +436,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 
 | Job | What it checks |
 |---|---|
-| `lint` | `ruff check`, `ruff format --check`, `mypy` (strict, `src/` and `scripts/`) |
+| `lint` | `ruff check`, `ruff format --check`, `mypy` (strict, `src/` and `scripts/`), `azure-pipelines.yml` parses |
 | `actionlint` | lints the workflow files (expressions, contexts, permissions) and their shell steps (shellcheck) |
 | `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
 | `docker` | builds the image (not pushed), checks that it runs as uid 10001, runs `--version` and the demo in the container with a mounted output directory |

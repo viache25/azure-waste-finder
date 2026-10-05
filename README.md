@@ -54,6 +54,7 @@ flowchart LR
     PREV[(previous<br/>report.json)] -.->|--previous| TR[trend.py<br/>new / resolved / unchanged]
     TR -.-> RP
     PR -->|€ per month| EX[export.py<br/>JSON, CSV, SARIF]
+    REG -.->|build_workbook.py| WB[Azure Workbook<br/>same KQL in the portal]
 ```
 
 ```
@@ -62,9 +63,11 @@ azure-pipelines.yml       Azure DevOps version of the weekly FinOps check (docs/
 infra/                    Terraform: resource group, 5 € budget alert, 3 waste resources
   extra-waste.tf          opt-in waste for the newer rules (enable_extra_waste = true)
   tests/*.tftest.hcl      terraform test with mocked providers (no Azure login)
+  workbook.tf             opt-in Azure Workbook (enable_workbook = true)
   github-oidc/            Terraform: OIDC identity for GitHub Actions (app registration, federated
                           credentials, read-only roles), applied once by the owner
 scripts/stop-vm.(ps1|sh)  stops the demo VM WITHOUT deallocating it
+scripts/build_workbook.py generates the Azure Workbook from the registry and the KQL files
 scripts/finops_issue.py   opens, updates or closes the "Azure waste report" issue (finops-check.yml)
 scripts/e2e_assert.py     checks a live report against what Terraform deployed (e2e.yml)
 src/waste_finder/
@@ -80,8 +83,9 @@ src/waste_finder/
   cli.py                  python -m waste_finder
   demo/                   fictional subscriptions, sample prices, Cost Management answers and an earlier
                           report.json (so the demo report shows a trend) for --demo and tests
-tests/                    pytest (388 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (409 tests), runs fully offline, coverage floor 95 %
   fixtures/               recorded-format API responses (Cost Management)
+workbooks/                Azure Workbook (generated): the rule queries as tables in the Azure portal
 docs/report.schema.json   JSON Schema of report.json
 docs/azure-devops.md      setup of the Azure DevOps pipeline (service connection, pipeline, settings)
 ```
@@ -174,6 +178,8 @@ The demo environment uses the smallest SKUs (B1s VM, 32 GB Standard HDD, one Sta
 | Orphaned NIC, unattached NSG, empty resource group | `orphaned_nic`, `unattached_nsg`, `empty_resource_group` | 0 €/h |
 
 Snapshots are only reported once they are 30 days old; right after `apply`, run the finder with `--snapshot-min-age 0` to see it.
+
+**Opt-in Azure Workbook:** `enable_workbook = true` also deploys the [Azure Workbook](#azure-workbook) into the resource group (free).
 
 If `terraform apply` says the VM size is not available, set `location` or `vm_size` in `terraform.tfvars`. If your subscription type does not support budgets, set `enable_budget = false`. To deploy into an existing resource group instead of creating `<prefix>-waste-demo-rg`, set `resource_group_name` (the group's location then applies); the [live end-to-end test](#live-end-to-end-test) does this.
 
@@ -294,6 +300,22 @@ cd infra/github-oidc && terraform apply -var "subscription_id=$(az account show 
 - the report as pipeline artifact `finops-report`, and the German summary on the run page.
 
 Instead of an issue, the optional run parameter `failOver` fails the run above a monthly amount. The service connection can reuse the read-only identity from `infra/github-oidc` via a second federated credential. Setup step by step: [docs/azure-devops.md](docs/azure-devops.md). GitHub CI only checks that the file parses and keeps its shape.
+
+## Azure Workbook
+
+[`workbooks/waste-finder.workbook.json`](workbooks/waste-finder.workbook.json) shows the same findings in the Azure portal, for people who would rather click than run a CLI: one table per rule, with the German title, priority, explanation, docs link and the `az` command per resource, the free rules under "Aufräumen (kostenlos)".
+
+- **Same queries**: every table runs the rule's KQL file from `src/waste_finder/queries/` unchanged against **Azure Resource Graph**, plus a short tail that does in KQL what the CLI does in Python: resources tagged `waste-finder:ignore=true` are left out, the age-based rules use the parameters "Snapshots älter als (Tage)" and "VM dealloziert seit (Tagen)" (default 30, like `--snapshot-min-age` and `--downgrade-lookback`), and a `command` column holds the remediation command.
+- **No euro amounts**: a workbook cannot call the Retail Prices API or Cost Management, so the amounts stay in the CLI report. `exclude` patterns from `waste-finder.toml` do not apply either.
+- **Scope**: a subscription picker (default: all subscriptions you can read). Viewers need Reader, as for the CLI. It only reads.
+- **Generated, never edited by hand**: [`scripts/build_workbook.py`](scripts/build_workbook.py) builds it from the registry and the KQL files; `tests/test_workbook.py` fails when the committed file is out of date, so it cannot drift from `queries/`.
+
+```bash
+python scripts/build_workbook.py           # regenerate after changing a rule or a KQL file
+python scripts/build_workbook.py --check   # exit 1 when workbooks/ is out of date
+```
+
+To use it, either import it by hand (Azure portal → Monitor → Workbooks → New → Advanced Editor `</>` → Gallery Template, paste the file, Apply, then Save into a resource group), or deploy it with Terraform: `enable_workbook = true` in `infra/` creates an `azurerm_application_insights_workbook` (shared Azure Monitor workbook "Azure Waste Finder (<prefix>)", stable GUID per prefix) in the demo resource group. Workbooks and Resource Graph queries are free. `terraform test` checks that it is off by default, deploys the generated file unchanged and uses the Resource Graph data source.
 
 ## Scope, rules and exclusions
 
@@ -441,8 +463,8 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 | `audit` | `pip-audit` on the installed runtime + dev dependencies (`pip freeze`), fails on known vulnerabilities |
 | `docker` | builds the image (not pushed), checks that it runs as uid 10001, runs `--version` and the demo in the container with a mounted output directory |
 | `package` | builds sdist + wheel like a release (`python -m build`, `twine check --strict`) and runs `--version` and the demo from the installed wheel outside the source tree |
-| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor (also checks the workflows: Azure jobs skip without `AZURE_CLIENT_ID`, nothing that runs `terraform apply` is scheduled, the E2E destroy step always runs); JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
-| `terraform` | for each Terraform root (`infra`, `infra/github-oidc`): `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked providers; `infra`: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste off by default, deploying into an existing resource group; `infra/github-oidc`: federated subjects, read-only subscription roles, Contributor only on the opt-in E2E group), `tflint` with the azurerm ruleset |
+| `python` | pytest on Python 3.11, 3.12 and 3.13 with the coverage floor (also checks the workflows: Azure jobs skip without `AZURE_CLIENT_ID`, nothing that runs `terraform apply` is scheduled, the E2E destroy step always runs; and that the Azure Workbook is in sync with the KQL files); JUnit results as a check run, coverage (XML + HTML) as artifact `coverage-<version>`; demo report in all formats (md, html, json, csv, sarif) as artifact `demo-report`, with its summary on the run page |
+| `terraform` | for each Terraform root (`infra`, `infra/github-oidc`): `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked providers; `infra`: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste and workbook off by default, the workbook deploys the generated file, deploying into an existing resource group; `infra/github-oidc`: federated subjects, read-only subscription roles, Contributor only on the opt-in E2E group), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
 `.github/workflows/codeql.yml` runs CodeQL for Python on PRs, on `main` and weekly; alerts appear under Security → Code scanning.

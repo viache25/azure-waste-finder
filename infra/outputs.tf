@@ -22,3 +22,8 @@ output "expected_findings" {
     empty_resource_group   = one(azurerm_resource_group.empty[*].name)
   }
 }
+
+output "workbook_id" {
+  description = "Resource ID of the Azure Workbook (enable_workbook); null when disabled."
+  value       = one(azurerm_application_insights_workbook.waste_finder[*].id)
+}

@@ -70,7 +70,7 @@ def test_finops_check():
     assert job["permissions"] == {"contents": "read", "id-token": "write", "issues": "write", "actions": "read"}
     assert "environment" not in job  # logs in with the branch credential (refs/heads/main), read-only
     script = run_text(job)
-    assert "--format md,html,json" in script
+    assert '--format "md,html,json"' in script
     assert '--summary "$GITHUB_STEP_SUMMARY"' in script
     assert '--previous "$PREVIOUS"' in script
     assert "terraform" not in script

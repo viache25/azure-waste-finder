@@ -68,7 +68,7 @@ jobs:
         env:
           PREVIOUS: ${{ steps.previous.outputs.path }}
         run: |
-          args=(--subscription "$AZURE_SUBSCRIPTION_ID" --cost-source "$COST_SOURCE" --format md,html,json --out-dir reports)
+          args=(--subscription "$AZURE_SUBSCRIPTION_ID" --cost-source "$COST_SOURCE" --format "md,html,json" --out-dir reports)
           if [ -n "$PREVIOUS" ]; then
             rc=0
             waste-finder "${args[@]}" --previous "$PREVIOUS" --summary "$GITHUB_STEP_SUMMARY" || rc=$?

@@ -32,6 +32,8 @@ python -m waste_finder --all-subscriptions --rules stopped_vm --exclude '*/resou
 python -m waste_finder --demo --format md,html,json,csv,sarif --fail-over 100 --summary summary.md   # exit code 3
 python scripts/finops_issue.py --report reports/report.json --threshold 10 --dry-run   # issue body finops-check.yml would write
 python scripts/e2e_assert.py --report reports/report.json --expected expected.json --resource-group <rg>   # e2e.yml check
+python scripts/build_workbook.py        # regenerate workbooks/waste-finder.workbook.json after changing a rule or KQL file
+python scripts/build_workbook.py --check   # exit 1 when the committed workbook is out of date (tests/test_workbook.py too)
 
 cd infra
 terraform fmt -check -recursive
@@ -68,6 +70,10 @@ infra/                    Terraform: RG, 5 € budget alert, 3 waste resources (
                           incremental snapshot of the orphaned disk, empty B1 Linux App Service plan,
                           internal Standard load balancer without rules (free); no NAT gateway (~0.04 €/h);
                           free clean-up resources: orphaned NIC, unattached NSG, empty resource group
+  workbook.tf             opt-in azurerm_application_insights_workbook, count = var.enable_workbook ? 1 : 0:
+                          data_json = file("${path.module}/../workbooks/waste-finder.workbook.json"), name =
+                          uuidv5 of the prefix (must be a GUID, stable across applies), source_id "azure monitor";
+                          output workbook_id
   tests/*.tftest.hcl      terraform test, mock_provider "azurerm" + "tls"
   .tflint.hcl             tflint: recommended terraform preset + azurerm ruleset
   github-oidc/            own root (azuread ~> 3.10 + azurerm), applied once by the owner (D10), never in CI:
@@ -81,6 +87,12 @@ scripts/stop-vm.(ps1|sh)  `az vm stop` WITHOUT deallocate (Terraform can't leave
 scripts/finops_issue.py   CI helper for finops-check.yml (not part of the package): load_summary(report.json) ->
                           decide(monthly, count, threshold, open issue) -> create | update | close | none;
                           GhIssues talks to the gh CLI through an injectable runner; --dry-run prints the body
+scripts/build_workbook.py generates workbooks/waste-finder.workbook.json (Notebook/1.0) from REGISTRY + queries/:
+                          intro text, parameters (subscription picker, AGE_PARAMETERS for the age-based rules with
+                          Settings defaults), per rule a text (title, priority, why/action, docs) + a Resource Graph
+                          query (queryType 1) = KQL file unchanged + tail (ignore tag, age filter, `command` column
+                          built from Rule.command by kql_command); paid rules first, free ones under "Aufräumen
+                          (kostenlos)"; deterministic (uuid5 IDs); --check exits 1 when the file is stale
 scripts/e2e_assert.py     CI helper for e2e.yml: check_report(report, expected_findings, resource_group) -> one Check
                           per BASE_RULES entry (rule id -> expected_findings key, `orphaned_ip` for the public IP):
                           same rule + name + group (case-insensitive), monthly_cost > 0; exit 0 / 1 (retry) / 2
@@ -113,6 +125,8 @@ src/waste_finder/
                           rows() for the report table)
   demo.py, demo/*.json    fake subscriptions, price list, Cost Management answers (cost_management.json, keyed by
                           subscription) and an earlier run (previous-report.json, used by --demo unless --previous)
+workbooks/                waste-finder.workbook.json, generated (never edit by hand); tests/test_workbook.py asserts
+                          it equals build_workbook.render()
 docs/report.schema.json   JSON Schema of report.json; tests validate the demo JSON against it (jsonschema, dev extra)
 docs/azure-devops.md      owner setup of the Azure DevOps pipeline (service connection with workload identity
                           federation, reusing the infra/github-oidc app via a second federated credential)
@@ -136,6 +150,7 @@ Cost vs. savings (D6): `Finding.monthly_cost_eur` is what the resource costs now
 4. Demo data: rows under the rule id in `demo/resource_graph.json`, matching price items in `demo/prices.json`.
 5. Tests: pricing cases in `tests/test_pricing.py`; `tests/test_registry.py` already fails if the KQL file, the strategy or the demo rows are missing.
 6. README rules table and the rule ids in the `--rules` row of the flags table; regenerate `docs/sample-report.md` / `.html` from `python -m waste_finder --demo`.
+7. Regenerate the Azure Workbook: `python scripts/build_workbook.py` (`tests/test_workbook.py` fails until you do). An age-based rule also needs an entry in `AGE_PARAMETERS` there; a new placeholder in `command` needs one in `COMMAND_FIELDS`.
 
 The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titles, severity, docs link and command from the registry; they need no change.
 
@@ -166,6 +181,7 @@ The report templates, the exporters (JSON/CSV/SARIF rules) and the CLI read titl
 - **FinOps issue** (`finops-check.yml` + `scripts/finops_issue.py`): exactly one issue titled `TITLE` ("Azure waste report") whose body contains `MARKER`; above `--threshold` create/update, "zero" (`summary.count == 0` and total 0, i.e. no paid or unpriced finding) closes, in between only an open issue is updated. The previous report comes from the newest unexpired `finops-report` artifact of a `main` run (`gh api .../actions/artifacts?name=finops-report`); exit code 2 with `--previous` (e.g. other currency) retries once without the trend. Body text is English (it is a repo notification), the report itself stays German.
 - **Azure DevOps** (`azure-pipelines.yml`): cannot be run or validated against Azure DevOps here; CI parses it (`lint` job) and `tests/test_azure_pipelines.py` pins its shape (weekly on main, AzureCLI@2 with the compile-time service connection, same artifact name for download and publish, no terraform). Parameters reach the inline script through `env:`, not by `${{ }}` inside the script. Keep it in step with `finops-check.yml` when the finder's flags change.
 - **Live E2E** (`e2e.yml`): the only workflow that creates resources, so `workflow_dispatch` only (asserted by `tests/test_workflows.py`), environment `azure-e2e`, unique `TF_VAR_prefix=e2e-<run_id>-<attempt>`, local state inside the job, `terraform destroy` as last step with `if: always() && steps.init.outcome == 'success'`. It deploys into the existing group from `infra/github-oidc` (`TF_VAR_resource_group_name`), so it needs `ARM_RESOURCE_PROVIDER_REGISTRATIONS=none` (Contributor on one group cannot register providers), `TF_VAR_enable_budget=false` and no extra waste (the empty resource group needs subscription rights). Never run it here: no credentials exist (D2). Changing the base resources' names in `infra/` means updating `expected_findings` and `BASE_RULES`.
+- **Azure Workbook** (`scripts/build_workbook.py`, `workbooks/`, `infra/workbook.tf`): the workbook is generated, so change the registry or the KQL file and regenerate, never edit the JSON. The tail added to each KQL file mirrors what the CLI does in Python (ignore tag via `tolower(tostring(tags)) !contains '"waste-finder:ignore":"true"'`, `isnull(ageDays) or ageDays >= {Parameter}`); `exclude` patterns and prices are CLI-only. Workbook text is German like the report. Resource Graph allows only a few `union`/`join`s per query, so there is no combined overview query. The Terraform resource is opt-in (`enable_workbook`, default false) and free; its tests compare `data_json` with `file()` of the generated workbook. Not validated against a live portal here (D2); the JSON follows the Notebook/1.0 format of the Azure Workbooks gallery templates.
 - **OIDC identity** (`infra/github-oidc/`): least privilege is asserted in its tests (subscription roles exactly Reader + Cost Management Reader; Contributor only with `enable_e2e` and only on the E2E group). Never widen it to Contributor on the subscription: the scheduled check shares the identity and must stay read-only. A new workflow that logs in to Azure needs a matching subject (a job on `main` without environment, or `environment: azure-e2e`), `permissions: id-token: write` and a job-level `if: vars.AZURE_CLIENT_ID != ''`. Mocked IDs must be well-formed (`/applications/<uuid>`, `/subscriptions/<uuid>`), hence `mock_resource`/`mock_data` defaults with `override_during = plan`. `terraform init` creates `.terraform.lock.hcl` files; they are not tracked.
 
 ## CI

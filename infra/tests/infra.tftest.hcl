@@ -374,3 +374,63 @@ run "existing_resource_group" {
     error_message = "The E2E run creates no budget."
   }
 }
+
+run "workbook_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(azurerm_application_insights_workbook.waste_finder) == 0 && output.workbook_id == null
+    error_message = "The workbook must be opt-in (enable_workbook defaults to false)."
+  }
+}
+
+run "workbook_enabled" {
+  command = plan
+
+  variables {
+    enable_workbook = true
+  }
+
+  assert {
+    condition     = length(azurerm_application_insights_workbook.waste_finder) == 1
+    error_message = "enable_workbook = true must create the workbook."
+  }
+
+  assert {
+    condition     = azurerm_application_insights_workbook.waste_finder[0].name == uuidv5("url", "https://github.com/viache25/azure-waste-finder/workbook/test") && can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", azurerm_application_insights_workbook.waste_finder[0].name))
+    error_message = "The workbook name must be a GUID that is stable per prefix."
+  }
+
+  assert {
+    condition     = azurerm_application_insights_workbook.waste_finder[0].display_name == "Azure Waste Finder (test)" && azurerm_application_insights_workbook.waste_finder[0].category == "workbook" && azurerm_application_insights_workbook.waste_finder[0].source_id == "azure monitor"
+    error_message = "The workbook must be a shared Azure Monitor workbook named after the prefix."
+  }
+
+  assert {
+    condition     = azurerm_application_insights_workbook.waste_finder[0].data_json == file("${path.module}/../workbooks/waste-finder.workbook.json")
+    error_message = "The workbook must deploy the generated workbooks/waste-finder.workbook.json unchanged."
+  }
+
+  assert {
+    condition     = jsondecode(azurerm_application_insights_workbook.waste_finder[0].data_json).version == "Notebook/1.0"
+    error_message = "data_json must be a workbook (Notebook/1.0)."
+  }
+
+  assert {
+    condition = alltrue([
+      for item in jsondecode(azurerm_application_insights_workbook.waste_finder[0].data_json).items :
+      item.content.queryType == 1 && item.content.resourceType == "microsoft.resourcegraph/resources" if item.type == 3
+    ]) && length([for item in jsondecode(azurerm_application_insights_workbook.waste_finder[0].data_json).items : item if item.type == 3]) >= 11
+    error_message = "Every workbook query must use the Resource Graph data source, one per rule."
+  }
+
+  assert {
+    condition     = azurerm_application_insights_workbook.waste_finder[0].resource_group_name == "test-waste-demo-rg" && azurerm_application_insights_workbook.waste_finder[0].location == "westeurope"
+    error_message = "The workbook goes into the demo resource group, in var.location."
+  }
+
+  assert {
+    condition     = azurerm_application_insights_workbook.waste_finder[0].tags == tomap({ project = "azure-waste-finder", purpose = "waste-demo", managed_by = "terraform" })
+    error_message = "The workbook must carry the project, purpose and managed_by tags."
+  }
+}

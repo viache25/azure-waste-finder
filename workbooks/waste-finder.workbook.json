@@ -1,0 +1,486 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Azure Kostencheck: Verschwendung\n\nRessourcen, die Geld kosten, aber nichts tun. Das Workbook führt dieselben Azure-Resource-Graph-Abfragen aus wie das CLI `waste-finder` ([azure-waste-finder](https://github.com/viache25/azure-waste-finder)), eine Tabelle je Regel. Ressourcen mit dem Tag `waste-finder:ignore=true` sind ausgeblendet.\n\nEuro-Beträge rechnet nur das CLI (Azure Retail Prices API oder Cost Management): `waste-finder --subscription <id>` schreibt den Bericht mit den Kosten je Ressource. Das Workbook ändert nichts; die Befehle erst prüfen, dann ausführen.\n\n*Generiert von `scripts/build_workbook.py` aus `src/waste_finder/queries/`; nicht von Hand ändern.*"
+      },
+      "name": "text - intro"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "9690a34e-b614-5b27-937e-f3ea55dcafe6",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "includeAll": false,
+              "showDefault": false
+            },
+            "defaultValue": "value::all"
+          },
+          {
+            "id": "0c7d8830-92cc-53b4-9a38-d49bba32fe89",
+            "version": "KqlParameterItem/1.0",
+            "name": "SnapshotMinAge",
+            "label": "Snapshots älter als (Tage)",
+            "type": 1,
+            "isRequired": true,
+            "value": "30",
+            "typeSettings": {
+              "paramValidationRules": [
+                {
+                  "regExp": "^[0-9]+$",
+                  "match": true,
+                  "message": "Ganze Zahl ≥ 0"
+                }
+              ]
+            }
+          },
+          {
+            "id": "6e8fc330-8ff6-5723-a1e7-b43cfe2e2674",
+            "version": "KqlParameterItem/1.0",
+            "name": "DowngradeLookback",
+            "label": "VM dealloziert seit (Tagen)",
+            "type": 1,
+            "isRequired": true,
+            "value": "30",
+            "typeSettings": {
+              "paramValidationRules": [
+                {
+                  "regExp": "^[0-9]+$",
+                  "match": true,
+                  "message": "Ganze Zahl ≥ 0"
+                }
+              ]
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Nicht angehängte Managed Disk\n\n**Priorität:** mittel · **Regel:** `unattached_disk` · [Doku](https://learn.microsoft.com/azure/virtual-machines/windows/find-unattached-disks)\n\nDisks werden nach bereitgestellter Größe abgerechnet, auch wenn keine VM sie nutzt.\n\n**Empfehlung:** Bei Bedarf Snapshot erstellen, dann Disk löschen. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - unattached_disk"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Managed disks that are not attached to any VM. They are billed by provisioned size.\nResources\n| where type =~ 'microsoft.compute/disks'\n| where tostring(properties.diskState) =~ 'Unattached'\n| project id, name, resourceGroup, location,\n          sku = tostring(sku.name),\n          sizeGb = toint(properties.diskSizeGB),\n          tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az disk delete --ids ', id)",
+        "size": 0,
+        "title": "Nicht angehängte Managed Disk (unattached_disk)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - unattached_disk"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## VM gestoppt, aber nicht dealloziert\n\n**Priorität:** hoch · **Regel:** `stopped_vm` · [Doku](https://learn.microsoft.com/azure/virtual-machines/states-billing)\n\nIm Zustand 'Stopped' bleibt die Hardware reserviert und die Rechenleistung wird weiter verrechnet.\n\n**Empfehlung:** VM deallozieren (az vm deallocate) oder löschen, wenn sie nicht mehr gebraucht wird. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - stopped_vm"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// VMs that are stopped but NOT deallocated: the compute is still reserved and billed.\nResources\n| where type =~ 'microsoft.compute/virtualmachines'\n| extend powerState = tostring(properties.extended.instanceView.powerState.code)\n| where powerState =~ 'PowerState/stopped'\n| project id, name, resourceGroup, location,\n          sku = tostring(properties.hardwareProfile.vmSize),\n          osType = tostring(properties.storageProfile.osDisk.osType),\n          powerState,\n          tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az vm deallocate --ids ', id)",
+        "size": 0,
+        "title": "VM gestoppt, aber nicht dealloziert (stopped_vm)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - stopped_vm"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Ungenutzte öffentliche IP-Adresse\n\n**Priorität:** niedrig · **Regel:** `orphaned_public_ip` · [Doku](https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses)\n\nStandard-IPs werden pro Stunde verrechnet, auch ohne Zuordnung.\n\n**Empfehlung:** Löschen, sofern die Adresse nicht bewusst reserviert bleiben muss. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - orphaned_public_ip"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Public IPs not associated with a NIC, load balancer or NAT gateway.\nResources\n| where type =~ 'microsoft.network/publicipaddresses'\n| where isempty(tostring(properties.ipConfiguration))\n    and isempty(tostring(properties.natGateway))\n| project id, name, resourceGroup, location,\n          sku = tostring(sku.name),\n          allocation = tostring(properties.publicIPAllocationMethod),\n          tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az network public-ip delete --ids ', id)",
+        "size": 0,
+        "title": "Ungenutzte öffentliche IP-Adresse (orphaned_public_ip)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - orphaned_public_ip"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Alter Disk-Snapshot\n\n**Priorität:** niedrig · **Regel:** `old_snapshot` · [Doku](https://learn.microsoft.com/azure/virtual-machines/disks-understand-billing)\n\nSnapshots werden pro GB und Monat verrechnet, solange sie existieren, auch wenn die Quell-Disk längst gelöscht ist. Geschätzt mit der bereitgestellten Größe (Obergrenze; verrechnet wird die belegte Größe).\n\n**Empfehlung:** Prüfen, ob der Snapshot noch als Backup gebraucht wird; sonst löschen oder durch Azure Backup mit Aufbewahrungsregel ersetzen. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - old_snapshot"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Managed disk snapshots with their age. They are billed per GB and month for as long as they exist,\n// even after the source disk is gone. rules.py keeps only snapshots at least snapshot_min_age_days old.\nResources\n| where type =~ 'microsoft.compute/snapshots'\n| extend timeCreated = todatetime(properties.timeCreated)\n| project id, name, resourceGroup, location,\n          sku = tostring(sku.name),\n          sizeGb = toint(properties.diskSizeGB),\n          incremental = tobool(properties.incremental),\n          timeCreated,\n          ageDays = toint((now() - timeCreated) / 1d),\n          tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| where isnull(ageDays) or ageDays >= {SnapshotMinAge}\n| extend command = strcat('az snapshot delete --ids ', id)",
+        "size": 0,
+        "title": "Alter Disk-Snapshot (old_snapshot)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - old_snapshot"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Leerer App-Service-Plan\n\n**Priorität:** mittel · **Regel:** `empty_app_service_plan` · [Doku](https://learn.microsoft.com/azure/app-service/overview-hosting-plans)\n\nEin App-Service-Plan wird pro Instanz und Stunde verrechnet, auch wenn keine App darauf läuft.\n\n**Empfehlung:** Plan löschen, wenn keine App mehr darauf soll; sonst auf den Free-Tarif (F1) oder eine kleinere Stufe skalieren. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - empty_app_service_plan"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// App Service plans without any app on a paid tier. A plan bills per instance and hour, apps or not.\n// Free and Shared plans cost nothing when empty; Consumption (Dynamic) and Flex Consumption bill per execution.\nResources\n| where type =~ 'microsoft.web/serverfarms'\n| where toint(properties.numberOfSites) == 0\n| extend tier = tostring(sku.tier)\n| where tier !in~ ('Free', 'Shared', 'Dynamic', 'FlexConsumption')\n| project id, name, resourceGroup, location,\n          sku = tostring(sku.name),\n          tier,\n          osType = iff(tobool(properties.reserved), 'Linux', 'Windows'),\n          quantity = toint(sku.capacity),\n          tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az appservice plan delete --ids ', id)",
+        "size": 0,
+        "title": "Leerer App-Service-Plan (empty_app_service_plan)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - empty_app_service_plan"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## NAT-Gateway ohne Subnetz\n\n**Priorität:** mittel · **Regel:** `idle_nat_gateway` · [Doku](https://learn.microsoft.com/azure/nat-gateway/nat-overview)\n\nEin NAT-Gateway wird pro Stunde verrechnet, auch wenn kein Subnetz es nutzt und kein Datenverkehr fließt; die zugeordneten öffentlichen IPs kosten zusätzlich.\n\n**Empfehlung:** NAT-Gateway löschen, wenn kein Subnetz es mehr braucht; danach die frei gewordenen öffentlichen IPs prüfen. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - idle_nat_gateway"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// NAT gateways not attached to any subnet. The gateway bills per hour whether traffic flows or not;\n// its public IPs bill on top and are not reported as orphaned while the gateway holds them.\nResources\n| where type =~ 'microsoft.network/natgateways'\n| where coalesce(array_length(properties.subnets), 0) == 0\n| project id, name, resourceGroup, location,\n          sku = tostring(sku.name),\n          publicIps = coalesce(array_length(properties.publicIpAddresses), 0)\n                    + coalesce(array_length(properties.publicIpPrefixes), 0),\n          tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az network nat gateway delete --ids ', id)",
+        "size": 0,
+        "title": "NAT-Gateway ohne Subnetz (idle_nat_gateway)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - idle_nat_gateway"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Load Balancer ohne Backend\n\n**Priorität:** niedrig · **Regel:** `idle_load_balancer` · [Doku](https://learn.microsoft.com/azure/load-balancer/load-balancer-overview)\n\nEin Standard Load Balancer wird pro Stunde für seine Lastenausgleichs- und Ausgangsregeln verrechnet, auch ohne Backend-Mitglieder. Ohne Regeln fällt keine Stundengebühr an; dann ist es nur ein Hinweis.\n\n**Empfehlung:** Load Balancer löschen, wenn keine Backends mehr dazukommen; sonst die Regeln entfernen, bis wieder Backends zugeordnet sind. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - idle_load_balancer"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Standard load balancers whose backend pools have no members (or that have no pool at all).\n// They bill per hour only for load-balancing and outbound rules, so the rule count is projected as quantity.\nResources\n| where type =~ 'microsoft.network/loadbalancers'\n| where tostring(sku.name) =~ 'Standard'\n| extend rules = coalesce(array_length(properties.loadBalancingRules), 0)\n               + coalesce(array_length(properties.outboundRules), 0)\n// mv-expand drops rows with an empty array, so a load balancer without pools gets one empty pool.\n| mv-expand pool = iff(coalesce(array_length(properties.backendAddressPools), 0) == 0,\n                       dynamic([{}]), properties.backendAddressPools)\n| extend poolMembers = coalesce(array_length(pool.properties.backendIPConfigurations), 0)\n                     + coalesce(array_length(pool.properties.loadBalancerBackendAddresses), 0)\n| summarize members = sum(poolMembers)\n    by id, name, resourceGroup, location, sku = tostring(sku.name), rules, tagsJson = tostring(tags)\n| where members == 0\n| project id, name, resourceGroup, location, sku,\n          quantity = rules,\n          tags = parse_json(tagsJson)\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az network lb delete --ids ', id)",
+        "size": 0,
+        "title": "Load Balancer ohne Backend (idle_load_balancer)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - idle_load_balancer"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Premium-Disk an deallozierter VM\n\n**Priorität:** mittel · **Regel:** `premium_disk_deallocated_vm` · [Doku](https://learn.microsoft.com/azure/virtual-machines/disks-convert-types)\n\nEine deallozierte VM kostet keine Rechenleistung, ihre Premium- und Standard-SSD-Disks werden aber weiter zum vollen Tarif verrechnet. Als Standard-HDD kostet dieselbe Größe deutlich weniger; eingespart wird die Differenz.\n\n**Empfehlung:** Solange die VM dealloziert bleibt, die Disk auf Standard HDD umstellen (vor dem nächsten Start bei Bedarf zurück auf SSD); wird die VM nicht mehr gebraucht, VM und Disks löschen. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - premium_disk_deallocated_vm"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Premium SSD / Standard SSD disks attached to a deallocated VM (diskState 'Reserved'). The VM bills no compute,\n// but its disks keep billing their full tier. LastOwnershipUpdateTime is when the disk state last changed (here:\n// when the VM was deallocated), so ageDays = days deallocated; rules.py keeps disks deallocated for the whole\n// lookback (downgrade_lookback_days).\nResources\n| where type =~ 'microsoft.compute/disks'\n| where tostring(properties.diskState) =~ 'Reserved'\n| extend sku = tostring(sku.name)\n| where sku in~ ('Premium_LRS', 'Premium_ZRS', 'StandardSSD_LRS', 'StandardSSD_ZRS')\n| extend since = todatetime(properties.LastOwnershipUpdateTime)\n| project id, name, resourceGroup, location, sku,\n          sizeGb = toint(properties.diskSizeGB),\n          vmId = tostring(managedBy),\n          since,\n          ageDays = toint((now() - since) / 1d),\n          tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| where isnull(ageDays) or ageDays >= {DowngradeLookback}\n| extend command = strcat('az disk update --sku Standard_LRS --ids ', id)",
+        "size": 0,
+        "title": "Premium-Disk an deallozierter VM (premium_disk_deallocated_vm)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - premium_disk_deallocated_vm"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Aufräumen (kostenlos)\n\nDiese Ressourcen kosten nichts. Aufräumen schafft Übersicht und vermeidet Fehler."
+      },
+      "name": "text - cleanup"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Verwaiste Netzwerkschnittstelle\n\n**Priorität:** info · **Regel:** `orphaned_nic` · [Doku](https://learn.microsoft.com/azure/virtual-network/virtual-network-network-interface)\n\nKostet nichts, belegt aber eine private IP-Adresse im Subnetz und bleibt oft nach dem Löschen einer VM zurück.\n\n**Empfehlung:** Löschen, wenn keine VM sie mehr bekommen soll. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - orphaned_nic"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Network interfaces not attached to a VM and not used by a private endpoint, a private link service or a\n// PaaS workload. They cost nothing, but they hold a private IP and clutter the subscription.\nResources\n| where type =~ 'microsoft.network/networkinterfaces'\n| where isempty(tostring(properties.virtualMachine.id))\n    and isempty(tostring(properties.privateEndpoint.id))\n    and isempty(tostring(properties.privateLinkService.id))\n    and coalesce(array_length(properties.hostedWorkloads), 0) == 0\n| project id, name, resourceGroup, location,\n          privateIp = tostring(properties.ipConfigurations[0].properties.privateIPAddress),\n          tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az network nic delete --ids ', id)",
+        "size": 0,
+        "title": "Verwaiste Netzwerkschnittstelle (orphaned_nic)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - orphaned_nic"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Nicht zugeordnete Netzwerksicherheitsgruppe\n\n**Priorität:** info · **Regel:** `unattached_nsg` · [Doku](https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview)\n\nKostet nichts, schützt aber auch nichts: Ihre Regeln wirken erst, wenn sie einem Subnetz oder einer Netzwerkschnittstelle zugeordnet ist.\n\n**Empfehlung:** Löschen oder bewusst dem vorgesehenen Subnetz zuordnen. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - unattached_nsg"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Network security groups associated with neither a subnet nor a network interface. Free, but their\n// rules are easy to mistake for protection that is in place.\nResources\n| where type =~ 'microsoft.network/networksecuritygroups'\n| where coalesce(array_length(properties.subnets), 0) == 0\n    and coalesce(array_length(properties.networkInterfaces), 0) == 0\n| project id, name, resourceGroup, location, tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az network nsg delete --ids ', id)",
+        "size": 0,
+        "title": "Nicht zugeordnete Netzwerksicherheitsgruppe (unattached_nsg)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - unattached_nsg"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Leere Ressourcengruppe\n\n**Priorität:** info · **Regel:** `empty_resource_group` · [Doku](https://learn.microsoft.com/azure/azure-resource-manager/management/manage-resource-groups-cli)\n\nKostet nichts, macht aber Zuständigkeiten, Budgets und Berechtigungen unübersichtlich; oft der Rest eines abgeschlossenen Projekts.\n\n**Empfehlung:** Löschen, wenn kein neues Projekt darin geplant ist. Die Spalte `command` enthält den `az`-Befehl je Ressource."
+      },
+      "name": "text - empty_resource_group"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Resource groups without any resource. Groups managed by a service (managedBy set, e.g. AKS node groups)\n// are skipped. Resource Graph has no anti-join, so count resources per group with a left outer join.\nResourceContainers\n| where type =~ 'microsoft.resources/subscriptions/resourcegroups'\n| where isempty(managedBy)\n| extend rgKey = tolower(id)\n| join kind=leftouter (\n    Resources\n    | extend rgKey = tolower(strcat('/subscriptions/', subscriptionId, '/resourceGroups/', resourceGroup))\n    | summarize resources = count() by rgKey\n  ) on rgKey\n| where coalesce(resources, 0) == 0\n| project id, name, resourceGroup = name, location, tags\n| where tolower(tostring(tags)) !contains '\"waste-finder:ignore\":\"true\"'\n| extend command = strcat('az group delete --name ', name, ' --subscription ', tostring(split(id, '/')[2]))",
+        "size": 0,
+        "title": "Leere Ressourcengruppe (empty_resource_group)",
+        "noDataMessage": "Keine Funde.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^id$",
+              "formatter": 13,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - empty_resource_group"
+    }
+  ],
+  "fallbackResourceIds": [
+    "azure monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

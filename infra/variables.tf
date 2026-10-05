@@ -51,3 +51,9 @@ variable "enable_extra_waste" {
   type        = bool
   default     = false
 }
+
+variable "enable_workbook" {
+  description = "Deploy the Azure Workbook (workbooks/waste-finder.workbook.json) into the resource group. Free."
+  type        = bool
+  default     = false
+}

@@ -19,6 +19,21 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 
 **Live demo report: <https://viache25.github.io/azure-waste-finder/>**. It is the HTML report of `--demo`, rebuilt from `main` after every green CI run, with [report.json](https://viache25.github.io/azure-waste-finder/report.json) ([schema](https://viache25.github.io/azure-waste-finder/report.schema.json)), [report.md](https://viache25.github.io/azure-waste-finder/report.md) and [report.csv](https://viache25.github.io/azure-waste-finder/report.csv) next to it.
 
+## Features
+
+| Area | What you get | Details |
+|---|---|---|
+| Detection | 11 rules as Azure Resource Graph queries: 8 that cost money, 3 free clean-up rules; any set of subscriptions or a management group; ignore tag, exclude patterns, savings threshold, rule selection, `waste-finder.toml` | [What it detects](#what-it-detects), [Scope](#scope-rules-and-exclusions) |
+| Pricing | List prices from the public Retail Prices API (EUR or another currency), or actual amortized costs from Cost Management with a per-finding fallback; cost and savings kept apart for downgrades | [Actual costs](#actual-costs-from-cost-management) |
+| Reports | German client report in Markdown and HTML (bar chart per rule, priority badges, sortable tables, dark mode, print layout); JSON with a schema, CSV, SARIF for code scanning; CI summary and exit code | [Output formats](#output-formats-and-exit-codes) |
+| Trends | New, resolved and unchanged findings and the change per month since an earlier `report.json` | [Trend](#trend-between-runs) |
+| Portal view | Azure Workbook generated from the same KQL files, optional Terraform deployment | [Azure Workbook](#azure-workbook) |
+| Demo environment | Terraform deploys real waste for a few cents per hour (5 € budget alert, opt-in extras), `terraform destroy` removes it; `--demo` runs fully offline | [Full run](#full-run-against-a-real-subscription), [Quick start](#quick-start-demo-no-azure-needed) |
+| Automation | Weekly FinOps check in GitHub Actions that keeps one "Azure waste report" issue; the same check as an Azure DevOps pipeline; a manual live end-to-end test that creates, finds and destroys the waste | [Scheduled check](#scheduled-finops-check), [Azure DevOps](#azure-devops-pipeline), [E2E](#live-end-to-end-test) |
+| Delivery | Wheel and sdist on GitHub Releases from git tags, container image on GHCR, live demo report on GitHub Pages, PyPI trusted publishing prepared | [Install](#install-from-release), [Container](#container-image), [CD](#continuous-delivery) |
+| Quality gates | ruff, mypy (strict), pytest on Python 3.11–3.13 with a 95 % coverage floor, `terraform test` + tflint for both Terraform roots, Checkov, CodeQL, pip-audit, actionlint, Trivy; Dependabot | [Development](#development) |
+| Security | Read-only by design; automation logs in with OIDC only (no secrets); least-privilege roles asserted by tests | [Security](#security), [ADR 0004](docs/adr/0004-oidc-only-auth.md) |
+
 ## What it detects
 
 | Rule | Severity | Why it wastes money | Recommended action |
@@ -39,22 +54,51 @@ A finding that saves nothing is always reported with severity `info`. Findings f
 
 Rules are data: each one is a single entry in `registry.py` (German and English title, severity, KQL file, pricing strategy, remediation text and `az` command, docs link) plus a KQL file. The report shows the severity, a docs link per rule and the exact `az` command per finding; the tool itself never runs them.
 
-## How it works
+## Architecture
+
+**Delivery and operations.** Pull requests run CI; a green `main` publishes the container image and the demo report; tags build releases. The Azure-facing jobs log in with OIDC as an identity that `infra/github-oidc/` creates, and only that identity touches the subscription.
 
 ```mermaid
 flowchart LR
-    TF[Terraform<br/>infra/] -->|creates| AZ[(Azure subscription)]
-    REG[registry.py<br/>rules as data] -.-> RG
+    subgraph GitHub
+        PR["Pull request"] --> CI["CI: ruff, mypy, pytest 3.11-3.13,<br/>terraform test, tflint, Checkov,<br/>actionlint, pip-audit, docker, package<br/>+ CodeQL"]
+        CI -->|"green on main"| CD["cd.yml: build, smoke test,<br/>Trivy scan"]
+        CI -->|"green on main"| PG["pages.yml: --demo report"]
+        TAG["tag v*"] --> REL["release.yml: wheel + sdist,<br/>tests against the wheel"]
+        FC["finops-check.yml<br/>weekly + manual"]
+        E2E["e2e.yml<br/>manual, reviewer approval"]
+        FC --> ISSUE["Issue 'Azure waste report'<br/>+ report artifact"]
+    end
+    CD --> GHCR[("GHCR image")]
+    PG --> PAGES[("GitHub Pages<br/>live demo")]
+    REL --> GHREL[("GitHub Release")]
+    REL -.->|"PYPI_PUBLISH"| PYPI[("PyPI")]
+    ADO["Azure DevOps<br/>azure-pipelines.yml"]
+    FC -->|"OIDC token"| ENTRA["Entra app, federated credentials<br/>infra/github-oidc"]
+    E2E -->|"OIDC token"| ENTRA
+    ADO -->|"workload identity federation"| ENTRA
+    ENTRA -->|"Reader + Cost Management Reader"| SUB[("Azure subscription:<br/>Resource Graph, Cost Management")]
+    ENTRA -->|"Contributor on awf-e2e-rg only"| SUB
+    E2E -->|"terraform apply, destroy: infra/"| SUB
+    WB["Azure Workbook<br/>workbooks/"] -->|"same KQL"| SUB
+```
+
+**Inside the CLI.** The query runner and the price fetcher are injected functions, so tests and `--demo` run the same code on recorded data.
+
+```mermaid
+flowchart LR
+    TF["Terraform<br/>infra/"] -->|creates| AZ[("Azure subscription")]
+    REG["registry.py<br/>rules as data"] -.-> RG
     REG -.-> PR
-    AZ -->|KQL queries| RG[rules.py<br/>Resource Graph]
-    CFG[config.py<br/>waste-finder.toml + flags] -.-> RG
-    RG -->|Findings minus ignored| PR[pricing.py<br/>Retail Prices API]
-    CM[costs.py<br/>Cost Management<br/>--cost-source actual] -.->|actual € replace list €| PR
-    PR -->|€ per month| RP[report.py<br/>Markdown + HTML]
-    PREV[(previous<br/>report.json)] -.->|--previous| TR[trend.py<br/>new / resolved / unchanged]
+    AZ -->|"KQL queries"| RG["rules.py<br/>Resource Graph"]
+    CFG["config.py<br/>waste-finder.toml + flags"] -.-> RG
+    RG -->|"Findings minus ignored"| PR["pricing.py<br/>Retail Prices API"]
+    CM["costs.py<br/>Cost Management<br/>--cost-source actual"] -.->|"actual € replace list €"| PR
+    PR -->|"€ per month"| RP["report.py<br/>Markdown + HTML"]
+    PREV[("previous<br/>report.json")] -.->|"--previous"| TR["trend.py<br/>new / resolved / unchanged"]
     TR -.-> RP
-    PR -->|€ per month| EX[export.py<br/>JSON, CSV, SARIF]
-    REG -.->|build_workbook.py| WB[Azure Workbook<br/>same KQL in the portal]
+    PR -->|"€ per month"| EX["export.py<br/>JSON, CSV, SARIF"]
+    REG -.->|"build_workbook.py"| WB["Azure Workbook<br/>same KQL in the portal"]
 ```
 
 ```
@@ -88,12 +132,16 @@ tests/                    pytest (420 tests), runs fully offline, coverage floor
 workbooks/                Azure Workbook (generated): the rule queries as tables in the Azure portal
 docs/report.schema.json   JSON Schema of report.json
 docs/azure-devops.md      setup of the Azure DevOps pipeline (service connection, pipeline, settings)
+docs/adr/                 architecture decision records
+.github/workflows/        ci, codeql, cd (GHCR), pages, release, finops-check, e2e
 ```
 
-Design choices:
+Design decisions, each with its context and trade-offs in [docs/adr/](docs/adr/):
 
-- **Resource Graph instead of listing resources per service**: one query language across all resource types and subscriptions, fast even for large tenants.
-- **Retail Prices API**: public, no login, returns EUR. These are list prices; real prices can be lower with EA/CSP discounts, reservations or Azure Hybrid Benefit. The report says so. `--cost-source actual` uses what each resource really cost instead (see [Actual costs](#actual-costs-from-cost-management)).
+- [ADR 0001](docs/adr/0001-resource-graph.md) **Resource Graph instead of listing resources per service**: one query language across all resource types and subscriptions, fast even for large tenants, Reader is enough.
+- [ADR 0002](docs/adr/0002-retail-vs-actual-costs.md) **List prices by default, actual costs on request**: the Retail Prices API is public and needs no login, but real prices can be lower with EA/CSP discounts, reservations or Azure Hybrid Benefit, and the report says so. `--cost-source actual` uses what each resource really cost, falling back to the list price per finding.
+- [ADR 0003](docs/adr/0003-rules-as-data.md) **Rules are data**: a registry entry plus a KQL file per rule; reports, exporters, CLI and workbook read from the registry.
+- [ADR 0004](docs/adr/0004-oidc-only-auth.md) **OIDC only**: GitHub Actions, Azure DevOps and PyPI publishing use federated, short-lived tokens; no secret exists.
 - **Pluggable runners**: the rules and the pricing take a query/fetch function, so tests and `--demo` run without Azure.
 - **Cost vs. savings**: a finding carries what the resource costs now and, optionally, what acting on it saves (e.g. a downgrade). The report total is the sum of savings, which default to the full cost; the tables show both columns, and the summary also gives the total cost when it differs.
 - **Monthly estimate** uses 730 hours, the same convention the Azure pricing calculator uses.
@@ -450,10 +498,11 @@ Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`s
 ## Development
 
 ```bash
-pip install -e ".[dev]"          # pytest, pytest-cov, ruff, mypy
+pip install -e ".[dev]"          # pytest, pytest-cov, ruff, mypy, types-requests, jsonschema, pyyaml
 pytest --cov                     # tests + coverage; fails below the floor in pyproject.toml (95 %)
 ruff check . && ruff format --check .
-mypy                             # strict on src/
+mypy                             # strict on src/ and scripts/
+python scripts/build_workbook.py --check   # the Azure Workbook matches the KQL files
 cd infra && terraform init -backend=false && terraform test   # mocked providers, no Azure login, Terraform >= 1.11
 tflint --init && tflint          # in infra/, config in infra/.tflint.hcl
 cd infra/github-oidc && terraform init -backend=false && terraform test && tflint --init && tflint   # same for the OIDC root
@@ -495,9 +544,19 @@ git tag -a v0.3.0 -m "v0.3.0" && git push origin v0.3.0
 
 Dependabot opens weekly PRs for pip, GitHub Actions, Terraform providers and the Docker base image: minor and patch bumps grouped into one PR per ecosystem, major bumps as separate PRs (the image stays on Python 3.12 until changed on purpose). They are merged when CI is green.
 
-## Roadmap
+## Status
 
-The plan lives in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1): CI quality gates, a data-driven rule engine, more rules, actual costs from Cost Management, trends between runs, releases, a container image, a scheduled check via OIDC, a live end-to-end test, an Azure DevOps pipeline and an Azure Workbook.
+The extension plan in [issue #1](https://github.com/viache25/azure-waste-finder/issues/1) is complete through step 24: CI quality gates, the rule registry and eleven rules, actual costs and trends, releases, the container image, the Pages demo, the OIDC identity, the scheduled check, the live end-to-end test, the Azure DevOps pipeline, the Azure Workbook, the HTML report and this documentation. Step 25, a .NET port, is optional and not started.
+
+| Part | State |
+|---|---|
+| CLI, rules, reports, `--demo` | Done; 420 offline tests. Latest release v0.2.0 (up to step 15); steps 16 to 24 are on `main` and go into the next tag |
+| CI, CodeQL, CD (GHCR), Pages | Run on every pull request / every green `main` |
+| Scheduled FinOps check, live end-to-end test | Implemented and skipped until the one-time Azure setup ([Connect GitHub to Azure](#connect-github-to-azure)) is done; not yet run against a real subscription |
+| Azure DevOps pipeline | Implemented; checked for syntax and shape only, needs an Azure DevOps project and service connection ([docs/azure-devops.md](docs/azure-devops.md)) |
+| Azure Workbook | Generated and tested; import it by hand or deploy it with `enable_workbook = true` |
+| PyPI | Trusted publishing prepared, off until `PYPI_PUBLISH` is `true` |
+| .NET port (step 25) | Optional, waiting for a decision |
 
 ## License
 

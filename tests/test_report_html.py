@@ -1,6 +1,8 @@
 """HTML report: bar chart per rule, severity badges, sortable tables, print and dark mode, no external resources."""
 
 import re
+from html.parser import HTMLParser
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -22,6 +24,31 @@ def finding(rule, name, cost, savings=None, severity=None):
         monthly_savings_eur=savings,
         severity=severity or REGISTRY[rule].severity,
     )
+
+
+class Elements(HTMLParser):
+    """Every start tag with its attributes, and the text of each <script> (tag names come lower-cased)."""
+
+    def __init__(self, html):
+        super().__init__()
+        self.tags: list[tuple[str, dict[str, str | None]]] = []
+        self.scripts: list[str] = []
+        self._in_script = False
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.append((tag, dict(attrs)))
+        if tag == "script":
+            self._in_script = True
+            self.scripts.append("")
+
+    def handle_endtag(self, tag):
+        if tag == "script":
+            self._in_script = False
+
+    def handle_data(self, data):
+        if self._in_script:
+            self.scripts[-1] += data
 
 
 @pytest.fixture(scope="module")
@@ -114,7 +141,7 @@ def test_tables_are_sortable_without_needing_javascript(demo_html):
     assert demo_html.count('<table class="sortable">') == 4
     assert demo_html.count('<th class="num" aria-sort="descending">Einsparung €/Monat</th>') == 2
     assert demo_html.count('<th class="nosort">Empfehlung</th>') == 3
-    script = re.findall(r"<script>(.*?)</script>", demo_html, re.S)
+    script = Elements(demo_html).scripts
     assert len(script) == 1
     assert 'querySelectorAll("table.sortable")' in script[0] and 'setAttribute("aria-sort"' in script[0]
     assert 'localeCompare(y, "de")' in script[0]
@@ -127,10 +154,12 @@ def test_tables_are_sortable_without_needing_javascript(demo_html):
 
 def test_report_is_self_contained(demo_html):
     """No CDN, no web fonts, no external scripts or stylesheets: the file works offline and in an e-mail."""
-    assert "<link" not in demo_html and "@import" not in demo_html and "url(" not in demo_html
-    assert not re.search(r"<script[^>]*\bsrc=", demo_html) and not re.search(r"<img\b", demo_html)
-    external = set(re.findall(r'(?:href|src)="(https?://[^"/]+)', demo_html))
-    assert external == {"https://learn.microsoft.com"}  # only the docs links
+    assert "@import" not in demo_html and "url(" not in demo_html
+    tags = Elements(demo_html).tags
+    assert not [tag for tag, _ in tags if tag in {"link", "img", "iframe", "object", "embed"}]
+    assert not [tag for tag, attrs in tags if "src" in attrs]
+    links = {urlsplit(attrs["href"] or "")[:2] for _, attrs in tags if "href" in attrs}
+    assert links == {("https", "learn.microsoft.com")}  # only the docs links
 
 
 def test_dark_mode_and_print_styles(demo_html):

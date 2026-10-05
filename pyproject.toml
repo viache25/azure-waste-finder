@@ -35,6 +35,7 @@ dev = [
     "mypy>=1.11",
     "types-requests>=2.31",
     "jsonschema>=4.23",
+    "pyyaml>=6.0",
 ]
 
 [project.urls]
@@ -56,6 +57,8 @@ waste_finder = ["queries/*.kql", "templates/*", "demo/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# scripts/*.py (CI helpers such as finops_issue.py) are imported by their tests as top-level modules.
+pythonpath = ["scripts"]
 
 [tool.coverage.run]
 source = ["waste_finder"]
@@ -70,6 +73,7 @@ skip_covered = true
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+src = ["src", "scripts"] # first-party imports for isort, including the scripts/ helpers
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "RUF"]
@@ -78,5 +82,5 @@ allowed-confusables = ["×"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src"]
+files = ["src", "scripts"]
 strict = true

@@ -20,6 +20,9 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy
+      # azure-pipelines.yml (Azure DevOps) never runs here: check that it parses; its shape is in tests/.
+      - name: azure-pipelines.yml parses
+        run: python -c "import yaml; yaml.safe_load(open('azure-pipelines.yml', encoding='utf-8'))"
 
   actionlint:
     runs-on: ubuntu-latest

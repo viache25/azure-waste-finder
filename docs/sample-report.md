@@ -3,7 +3,7 @@
 > **Demo-Daten:** fiktive Subscriptions und Beispielpreise, keine echte Umgebung.
 
 **Bereich:** `demo (Contoso)`  
-**Datum:** 2026-10-04
+**Datum:** 2026-10-05
 
 ## Ergebnis
 

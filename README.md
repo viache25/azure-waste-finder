@@ -15,7 +15,7 @@ A small **FinOps "Kostencheck"** for Azure: find resources that cost money but d
 
 ![Sample report](docs/sample-report.png)
 
-*Sample report generated with `--demo` (fictional subscription, sample prices). See [docs/sample-report.md](docs/sample-report.md).*
+*Top of the HTML report of `--demo` (fictional subscriptions, sample prices): total, priorities and the savings per rule. The full report: [docs/sample-report.html](docs/sample-report.html) (download and open it, or see the live demo below), Markdown version [docs/sample-report.md](docs/sample-report.md).*
 
 **Live demo report: <https://viache25.github.io/azure-waste-finder/>**. It is the HTML report of `--demo`, rebuilt from `main` after every green CI run, with [report.json](https://viache25.github.io/azure-waste-finder/report.json) ([schema](https://viache25.github.io/azure-waste-finder/report.schema.json)), [report.md](https://viache25.github.io/azure-waste-finder/report.md) and [report.csv](https://viache25.github.io/azure-waste-finder/report.csv) next to it.
 
@@ -78,12 +78,12 @@ src/waste_finder/
   pricing.py              pricing strategies: Retail Prices API -> €/month per finding (cached 24 h)
   costs.py                --cost-source actual: Cost Management Query API, amortized cost per resource
   trend.py                --previous: new, resolved and unchanged findings since an earlier report.json
-  report.py, templates/   German client report (Markdown + HTML)
+  report.py, templates/   German client report (Markdown + HTML with SVG chart, sortable tables)
   export.py               JSON, CSV, SARIF and the Markdown summary for CI
   cli.py                  python -m waste_finder
   demo/                   fictional subscriptions, sample prices, Cost Management answers and an earlier
                           report.json (so the demo report shows a trend) for --demo and tests
-tests/                    pytest (409 tests), runs fully offline, coverage floor 95 %
+tests/                    pytest (420 tests), runs fully offline, coverage floor 95 %
   fixtures/               recorded-format API responses (Cost Management)
 workbooks/                Azure Workbook (generated): the rule queries as tables in the Azure portal
 docs/report.schema.json   JSON Schema of report.json
@@ -412,10 +412,18 @@ waste-finder --subscription <id> --format md,html,json --out-dir reports/2026-11
 
 | Format | File | Use |
 |---|---|---|
-| `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription, plus the section "Aufräumen (kostenlos)" for free findings |
+| `md`, `html` | `report.md`, `report.html` | German client report, grouped by subscription, plus the section "Aufräumen (kostenlos)" for free findings. The HTML version adds a bar chart of the savings per rule, priority badges, sortable tables, dark mode and a print layout (see below) |
 | `json` | `report.json` | Everything in the report, for scripts and later runs. Has a `schema_version` (currently `1.5`; 1.1 added `age_days`, 1.2 `quantity`, 1.3 the `cleanup` list and `summary.cleanup`, 1.4 `cost_source`, `cost_period` and `summary.actual_costs`, 1.5 `trend` and per finding `trend` and `previous_monthly_savings`) and is described by [docs/report.schema.json](docs/report.schema.json); the tests validate the demo output against it |
 | `csv` | `report.csv` | One row per finding, free clean-up findings last (subscription, resource group, rule, severity, age, quantity, cost, savings, currency, cost source, trend, resource ID, `az` command) for Excel |
 | `sarif` | `report.sarif` | SARIF 2.1.0 for GitHub code scanning: one rule per registry entry, one result per finding, free clean-up findings included (`high` → error, `medium` → warning, `low`/`info` → note). Azure resources are not files, so the resource ID is the alert's path; a fingerprint of rule + resource ID keeps alerts stable, so cleaning up a resource closes its alert |
+
+**The HTML report** is one self-contained file: no JavaScript framework, no CDN, no web fonts, no images, so it works offline, as an e-mail attachment and on the [live demo](https://viache25.github.io/azure-waste-finder/).
+
+- **"Einsparpotenzial nach Problem"**: an inline SVG bar chart of the monthly savings per rule, largest first, with the number of resources per rule (only when at least two rules save money). Each bar has a tooltip.
+- **Priority badges** (`hoch`, `mittel`, `niedrig`, `info`) in the tables, and a count per priority under the total.
+- **Sortable tables**: click a column header (a few lines of inline vanilla JavaScript; `aria-sort` marks the sorted column). Without JavaScript the tables keep their order, most savings first.
+- **Dark mode** follows the system setting (`prefers-color-scheme`), with its own colors for badges and bars.
+- **Print / PDF**: light colors on paper even in dark mode, table headers repeated on each page, no rows split across pages, docs links printed with their URL.
 
 Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`sarif_file: reports/report.sarif`, `category: azure-waste-finder`) to see findings under Security → Code scanning.
 

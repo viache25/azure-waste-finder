@@ -22,6 +22,12 @@ ROW_STATUS_DE = {"new": "neu", "resolved": "behoben", "changed": "geändert"}
 # Report label for Finding.cost_source (column "Quelle" when actual costs were requested).
 COST_SOURCE_LABELS = {"actual": "Ist-Kosten", "retail": "Listenpreis", None: "ohne Preis"}
 
+# Sort key of the severity column in the HTML report (data-sort): high 3 ... info 0.
+SEVERITY_RANK = {severity: rank for rank, severity in enumerate(reversed(SEVERITIES))}
+
+# The longest bar of the HTML chart takes this share of the width; the rest is room for its value label.
+CHART_MAX_PERCENT = 75.0
+
 
 @dataclass
 class Summary:
@@ -43,6 +49,43 @@ class Group:
     subscription_id: str
     findings: list[Finding]
     monthly_eur: float
+
+
+@dataclass
+class ChartBar:
+    """One bar of the HTML chart "Einsparpotenzial nach Problem": the savings of one rule."""
+
+    rule: str
+    label: str
+    count: int  # findings of this rule
+    monthly_eur: float
+    percent: float  # bar length in % of the chart width
+
+
+def rule_chart(findings: list[Finding]) -> list[ChartBar]:
+    """Savings per rule, largest first (ties in registry order), scaled to CHART_MAX_PERCENT. Rules without savings
+    are left out; with fewer than two bars there is nothing to compare, so the chart is skipped (empty list)."""
+    counts: dict[str, int] = {}
+    sums: dict[str, float] = {}
+    for f in findings:
+        counts[f.rule] = counts.get(f.rule, 0) + 1
+        sums[f.rule] = sums.get(f.rule, 0.0) + (f.savings_eur or 0)
+    totals = {rule: round(amount, 2) for rule, amount in sums.items()}
+    order = list(REGISTRY)
+    rules = sorted((r for r in totals if totals[r] > 0), key=lambda r: (-totals[r], order.index(r)))
+    if len(rules) < 2:
+        return []
+    top = totals[rules[0]]
+    return [
+        ChartBar(r, REGISTRY[r].title_de, counts[r], totals[r], round(totals[r] / top * CHART_MAX_PERCENT, 2))
+        for r in rules
+    ]
+
+
+def severity_counts(findings: list[Finding]) -> dict[str, int]:
+    """Findings per severity, in report order (hoch first), only severities that occur."""
+    counts = {severity: sum(1 for f in findings if f.severity == severity) for severity in SEVERITIES}
+    return {severity: n for severity, n in counts.items() if n}
 
 
 def summarize(findings: list[Finding], ignored: int = 0, below_threshold: int = 0, cleanup: int = 0) -> Summary:
@@ -137,4 +180,7 @@ def render(
         trend_rows=trend.rows() if trend else [],
         trend_labels=ROW_STATUS_DE,
         cost_source_name=cost_source,
+        chart=rule_chart(findings),
+        severity_counts=severity_counts(findings),
+        severity_rank=SEVERITY_RANK,
     )

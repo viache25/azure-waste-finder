@@ -77,3 +77,27 @@ def test_finops_check():
     upload = next(s for s in steps(job) if str(s.get("uses", "")).startswith("actions/upload-artifact@"))
     assert upload["with"]["name"] == finops_issue.ARTIFACT  # the issue body points to this artifact
     assert "python scripts/finops_issue.py --report reports/report.json" in script
+
+
+def test_e2e_is_manual_and_always_cleans_up():
+    workflow = load(ROOT / ".github" / "workflows" / "e2e.yml")
+    assert triggers(workflow) == {"workflow_dispatch"}  # creates resources: never on a schedule (D3)
+    job = workflow["jobs"]["e2e"]
+    assert job["if"] == AZURE_GUARD
+    assert job["environment"] == "azure-e2e"  # required reviewer + the environment federated credential
+    assert job["permissions"] == {"contents": "read", "id-token": "write"}
+    assert "github.run_id" in job["env"]["TF_VAR_prefix"]  # unique prefix per run
+    assert job["env"]["ARM_RESOURCE_PROVIDER_REGISTRATIONS"] == "none"
+    assert job["env"]["TF_VAR_enable_budget"] == "false"
+
+    runs = [str(step.get("run", "")) for step in steps(job)]
+
+    def index(text):
+        return next(i for i, run in enumerate(runs) if text in run)
+
+    assert index("terraform apply") < index("scripts/stop-vm.sh") < index("waste-finder") < index("terraform destroy")
+    finder = runs[index("waste-finder")]
+    assert "--format json" in finder and "scripts/e2e_assert.py" in finder
+    destroy = steps(job)[index("terraform destroy")]
+    assert destroy is steps(job)[-1]
+    assert "always()" in destroy["if"]  # also after a failed assertion, a failed apply or a cancel

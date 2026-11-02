@@ -30,7 +30,7 @@ unless you prefer to stay anonymous.
 
 | Check | Where |
 |---|---|
-| CodeQL (Python) | `.github/workflows/codeql.yml`, on PRs, `main` and weekly; results in the Security tab |
+| CodeQL (Python) | `.github/workflows/codeql.yml`, on PRs and `main`; results in the Security tab |
 | `pip-audit` on runtime and dev dependencies | `audit` job in `.github/workflows/ci.yml`, fails on known vulnerabilities |
 | Checkov on `infra/` | `config-scan` job in `.github/workflows/ci.yml`, report-only SARIF in the Security tab |
 | Dependency updates | Dependabot, weekly, for pip, GitHub Actions, Terraform providers and the Docker base image |

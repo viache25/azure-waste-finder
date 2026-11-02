@@ -491,7 +491,7 @@ Upload the SARIF file in a workflow with `github/codeql-action/upload-sarif` (`s
 - The demo VM has no public IP and password login is disabled; the orphaned disk denies public network access. `terraform test` checks all of this in CI.
 - The container image runs as a non-root user, and Trivy scans every image pushed to GHCR (report-only, Security tab).
 - Checkov scans `infra/` on every PR. Findings that are intentional for a waste environment (no customer-managed key on an empty disk, no NSG on a subnet without public endpoints) are skipped inline with a reason.
-- CodeQL analyses the Python code on every PR, on `main` and weekly; `pip-audit` fails CI when a runtime or dev dependency has a known vulnerability.
+- CodeQL analyses the Python code on every PR and on `main`; `pip-audit` fails CI when a runtime or dev dependency has a known vulnerability.
 - The tool is **read-only**: it never changes or deletes anything in the subscription.
 - How to report a vulnerability: see [SECURITY.md](SECURITY.md).
 
@@ -524,7 +524,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
 | `terraform` | for each Terraform root (`infra`, `infra/github-oidc`): `terraform fmt -check`, `init -backend=false`, `validate`, `terraform test` (mocked providers; `infra`: smallest SKUs, tags, budget toggle, no public IP on the VM, no password login, extra waste and workbook off by default, the workbook deploys the generated file, deploying into an existing resource group; `infra/github-oidc`: federated subjects, read-only subscription roles, Contributor only on the opt-in E2E group), `tflint` with the azurerm ruleset |
 | `config-scan` | Checkov on `infra/`, report-only: results as SARIF in the Security tab (category `checkov`) |
 
-`.github/workflows/codeql.yml` runs CodeQL for Python on PRs, on `main` and weekly; alerts appear under Security → Code scanning.
+`.github/workflows/codeql.yml` runs CodeQL for Python on PRs and on `main`; alerts appear under Security → Code scanning.
 
 ### Continuous delivery
 

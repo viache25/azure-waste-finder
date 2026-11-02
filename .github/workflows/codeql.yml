@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  schedule:
-    - cron: "17 4 * * 1" # weekly, picks up new CodeQL queries; read-only, no Azure involved
+  # No schedule: the weekly run is switched off (re-add `schedule` to restore it).
 
 permissions:
   contents: read
